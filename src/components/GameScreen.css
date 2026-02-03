@@ -1,0 +1,93 @@
+.game-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh; /* Dynamic viewport height for mobile */
+  background-color: #1a1a2e;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+/* Header area for phase indicator */
+.game-screen__header {
+  flex: 0 0 auto;
+  padding: 20px 0;
+  text-align: center;
+}
+
+.game-screen__phase {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Main circles area - grows to fill available space */
+.game-screen__circles {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 20px;
+}
+
+/* Single row layout for 2-3 circles */
+.game-screen__circles.single-row {
+  flex-direction: row;
+  flex-wrap: nowrap;
+}
+
+/* Two row layout for 4-6 circles */
+.game-screen__circles.two-rows {
+  flex-direction: row;
+  flex-wrap: wrap;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.game-screen__circles.two-rows > * {
+  flex: 0 0 calc(50% - 10px);
+}
+
+/* Footer area for future controls */
+.game-screen__footer {
+  flex: 0 0 auto;
+  min-height: 80px;
+  padding: 20px 0;
+}
+
+/* Responsive circle sizing using CSS custom properties */
+.game-screen .note-circle {
+  /* Calculate size based on viewport, min 100px, max 150px */
+  --circle-size: clamp(100px, 20vmin, 150px);
+  width: var(--circle-size);
+  height: var(--circle-size);
+}
+
+/* Larger circles on tablets and up */
+@media (min-width: 768px) {
+  .game-screen .note-circle {
+    --circle-size: clamp(120px, 18vmin, 150px);
+  }
+
+  .game-screen__circles {
+    gap: 30px;
+  }
+
+  .game-screen__circles.two-rows {
+    max-width: 600px;
+  }
+}
+
+/* Ensure circles don't overflow on very small screens */
+@media (max-width: 360px) {
+  .game-screen__circles {
+    gap: 15px;
+    padding: 10px;
+  }
+
+  .game-screen .note-circle {
+    --circle-size: 100px;
+  }
+}

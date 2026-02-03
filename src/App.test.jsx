@@ -8,15 +8,6 @@ vi.mock('./audio', () => ({
     loadInstrument: vi.fn().mockResolvedValue(undefined),
     playNote: vi.fn().mockResolvedValue(undefined),
     isInitialized: vi.fn().mockReturnValue(true),
-    getLoadingStatus: vi.fn().mockReturnValue({
-      loaded: ['piano', 'violin', 'guitar-acoustic'],
-      loading: [],
-    }),
-    getAvailableInstruments: vi.fn().mockReturnValue([
-      'piano',
-      'violin',
-      'guitar-acoustic',
-    ]),
   },
 }))
 
@@ -28,14 +19,17 @@ describe('App', () => {
     expect(screen.getByText('Tap to Start')).toBeInTheDocument()
   })
 
-  it('renders the audio test screen after initialization', async () => {
+  it('renders the game screen after initialization', async () => {
     render(<App />)
 
     const loader = screen.getByRole('button')
     fireEvent.click(loader)
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /audio test/i })).toBeInTheDocument()
+      // GameScreen shows the phase indicator and note circles
+      expect(screen.getByText('Listen & Learn')).toBeInTheDocument()
+      expect(screen.getByLabelText('Play C')).toBeInTheDocument()
+      expect(screen.getByLabelText('Play G')).toBeInTheDocument()
     })
   })
 })
