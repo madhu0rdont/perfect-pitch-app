@@ -4,9 +4,6 @@ import { NOTE_CONFIGS, getCircleAngle } from '../constants/notes'
 import { PHASES } from '../engine/PhaseManager'
 import './GameScreen.css'
 
-// Hardcoded active notes for now
-const ACTIVE_NOTES = ['C4', 'G4']
-
 /**
  * Phase indicator messages
  */
@@ -42,9 +39,13 @@ function GameScreen() {
     quizRound,
     quizTotalRounds,
     restart,
-  } = useGamePhase(ACTIVE_NOTES)
+    activeNotes,
+    promotionMessage,
+    notesEntering,
+    notesExiting,
+  } = useGamePhase()
 
-  const circleSize = getCircleSize(ACTIVE_NOTES.length)
+  const circleSize = getCircleSize(activeNotes.length)
   const radius = Math.max(120, circleSize * 1.8)
 
   // Determine if circles should be disabled
@@ -69,14 +70,16 @@ function GameScreen() {
             '--circle-radius': `${radius}px`,
           }}
         >
-          {ACTIVE_NOTES.map((note) => {
+          {activeNotes.map((note) => {
             const angle = getCircleAngle(note)
             const state = circleStates[note] || 'idle'
+            const isEntering = notesEntering.includes(note)
+            const isExiting = notesExiting.includes(note)
 
             return (
               <div
                 key={note}
-                className="game-screen__note-position"
+                className={`game-screen__note-position ${isEntering ? 'entering' : ''} ${isExiting ? 'exiting' : ''}`}
                 style={{
                   '--angle': `${angle}deg`,
                 }}
@@ -96,6 +99,11 @@ function GameScreen() {
       <div className="game-screen__footer">
         {phase === PHASES.RESULT && (
           <div className="game-screen__results">
+            {promotionMessage && (
+              <div className="game-screen__promotion-message">
+                {promotionMessage} ✨
+              </div>
+            )}
             <button
               className="game-screen__restart-button"
               onClick={restart}

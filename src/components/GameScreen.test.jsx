@@ -10,13 +10,33 @@ vi.mock('../audio', () => ({
   },
 }))
 
+// Mock the StorageManager
+const mockStorage = {
+  savedState: null,
+}
+vi.mock('../engine/StorageManager', () => ({
+  saveProgress: vi.fn((state) => {
+    mockStorage.savedState = state
+    return true
+  }),
+  loadProgress: vi.fn(() => mockStorage.savedState),
+  resetProgress: vi.fn(() => {
+    mockStorage.savedState = null
+    return true
+  }),
+  hasExistingProgress: vi.fn(() => mockStorage.savedState !== null),
+}))
+
 import GameScreen from './GameScreen'
 import { audioEngine } from '../audio'
+import { saveProgress, loadProgress, resetProgress } from '../engine/StorageManager'
 
 describe('GameScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
+    // Reset mock storage
+    mockStorage.savedState = null
   })
 
   afterEach(() => {
@@ -538,6 +558,151 @@ describe('GameScreen', () => {
       // 4. RESULT phase
       expect(screen.getByText('Great job!')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Play Again' })).toBeInTheDocument()
+    })
+  })
+
+  describe('progress tracking integration', () => {
+    it('saves progress to storage after completing quiz', async () => {
+      render(<GameScreen />)
+
+      // Complete a full game cycle
+      // LISTEN phase
+      await act(async () => {
+        vi.advanceTimersByTime(100)
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(1500)
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(1500)
+      })
+
+      // EXPLORE phase
+      const cCircle = screen.getByLabelText('Play C')
+      for (let i = 0; i < 6; i++) {
+        await act(async () => {
+          fireEvent.click(cCircle)
+          vi.advanceTimersByTime(100)
+        })
+      }
+      await act(async () => {
+        vi.advanceTimersByTime(100)
+      })
+
+      // QUIZ phase
+      for (let i = 0; i < 5; i++) {
+        await act(async () => {
+          fireEvent.click(cCircle)
+          vi.advanceTimersByTime(100)
+        })
+        await act(async () => {
+          vi.advanceTimersByTime(2200)
+        })
+      }
+
+      // Should be in RESULT phase
+      expect(screen.getByText('Great job!')).toBeInTheDocument()
+
+      // Progress should have been saved
+      expect(saveProgress).toHaveBeenCalled()
+    })
+
+    it('records quiz answers to progress tracker', async () => {
+      render(<GameScreen />)
+
+      // Advance to QUIZ phase
+      await act(async () => {
+        vi.advanceTimersByTime(100)
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(1500)
+      })
+      await act(async () => {
+        vi.advanceTimersByTime(1500)
+      })
+
+      const cCircle = screen.getByLabelText('Play C')
+      for (let i = 0; i < 6; i++) {
+        await act(async () => {
+          fireEvent.click(cCircle)
+          vi.advanceTimersByTime(100)
+        })
+      }
+      await act(async () => {
+        vi.advanceTimersByTime(100)
+      })
+
+      // Clear saveProgress mocks before quiz
+      vi.clearAllMocks()
+
+      // Answer all 5 questions
+      for (let i = 0; i < 5; i++) {
+        await act(async () => {
+          fireEvent.click(cCircle)
+          vi.advanceTimersByTime(100)
+        })
+        await act(async () => {
+          vi.advanceTimersByTime(2200)
+        })
+      }
+
+      // Progress should be saved with quiz data
+      expect(saveProgress).toHaveBeenCalled()
+      const savedState = mockStorage.savedState
+      expect(savedState).toBeTruthy()
+      expect(savedState.noteProgress).toBeDefined()
+      // Should have recorded some attempts
+      const totalAttempts = Object.values(savedState.noteProgress).reduce((sum, noteData) => {
+        return sum + Object.values(noteData).reduce((s, inst) => s + (inst.attempts || 0), 0)
+      }, 0)
+      expect(totalAttempts).toBeGreaterThan(0)
+    })
+
+    it('loads saved progress on mount', async () => {
+      // Set up saved state with 3 notes
+      mockStorage.savedState = {
+        noteProgress: {
+          C4: { piano: { attempts: 10, correct: 8, streak: 3, recentResults: [true, true, true] } },
+          G4: { piano: { attempts: 10, correct: 9, streak: 4, recentResults: [true, true, true, true] } },
+          D4: { piano: { attempts: 5, correct: 3, streak: 0, recentResults: [true, false, true] } },
+        },
+        activeNotes: ['C4', 'G4', 'D4'],
+        activeInstruments: ['piano'],
+        currentStage: 2,
+        sessionsPlayed: 5,
+      }
+
+      render(<GameScreen />)
+
+      await act(async () => {
+        vi.advanceTimersByTime(100)
+      })
+
+      // Should have 3 circles (loaded from storage)
+      const circles = screen.getAllByRole('button')
+      expect(circles).toHaveLength(3)
+
+      // D4 should be present
+      expect(screen.getByLabelText('Play D')).toBeInTheDocument()
+    })
+
+    it('starts fresh when no saved progress exists', async () => {
+      // Ensure no saved state
+      mockStorage.savedState = null
+
+      render(<GameScreen />)
+
+      await act(async () => {
+        vi.advanceTimersByTime(100)
+      })
+
+      // Should have default 2 circles
+      const circles = screen.getAllByRole('button')
+      expect(circles).toHaveLength(2)
+
+      // Should have C4 and G4
+      expect(screen.getByLabelText('Play C')).toBeInTheDocument()
+      expect(screen.getByLabelText('Play G')).toBeInTheDocument()
     })
   })
 })

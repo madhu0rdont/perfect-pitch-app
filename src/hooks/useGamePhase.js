@@ -15,6 +15,16 @@ import {
   getResults,
   isPhaseComplete,
 } from '../engine/PhaseManager'
+import {
+  createInitialState as createInitialProgressState,
+  recordAnswer,
+  applyAdaptiveDifficulty,
+  checkPromotion,
+} from '../engine/ProgressTracker'
+import {
+  saveProgress,
+  loadProgress,
+} from '../engine/StorageManager'
 
 const LISTEN_NOTE_INTERVAL = 1500 // ms between notes in LISTEN phase
 const EXPLORE_MAX_TAPS = 6
@@ -27,17 +37,35 @@ const CORRECT_FEEDBACK_DURATION = 800 // ms to show correct state
 const INCORRECT_FEEDBACK_DURATION = 1200 // ms to show incorrect + replay correct note
 const QUESTION_PAUSE = 1000 // ms pause before next question
 
+// Duration to show promotion message
+const PROMOTION_MESSAGE_DURATION = 2500 // ms to show "New note!" message
+
 /**
  * Custom hook that wraps PhaseManager and connects it to GameScreen.
- * Manages game phases, audio playback, and circle states.
+ * Manages game phases, audio playback, circle states, and progress tracking.
  *
- * @param {string[]} activeNotes - Array of active note names
  * @returns {Object} Game state and handlers
  */
-export function useGamePhase(activeNotes) {
+export function useGamePhase() {
+  // Initialize progress state from storage or create fresh
+  const [progressState, setProgressState] = useState(() => {
+    const saved = loadProgress()
+    return saved || createInitialProgressState()
+  })
+
+  // Derive activeNotes from progress state
+  const activeNotes = progressState.activeNotes
+
+  // Promotion/demotion messaging
+  const [promotionMessage, setPromotionMessage] = useState(null)
+  const [notesEntering, setNotesEntering] = useState([]) // Notes fading in
+  const [notesExiting, setNotesExiting] = useState([]) // Notes fading out
+
   const [gameState, setGameState] = useState(() => {
     const initial = createInitialState()
-    return startListenPhase(initial, activeNotes)
+    const saved = loadProgress()
+    const notes = saved ? saved.activeNotes : createInitialProgressState().activeNotes
+    return startListenPhase(initial, notes)
   })
 
   const [circleStates, setCircleStates] = useState({})
@@ -212,8 +240,17 @@ export function useGamePhase(activeNotes) {
 
   // ============ RESULT Phase Logic ============
 
+  // Track previous phase to detect when we enter RESULT
+  const prevPhaseForResultRef = useRef(null)
+
   useEffect(() => {
-    if (phase !== PHASES.RESULT) return
+    if (phase !== PHASES.RESULT) {
+      prevPhaseForResultRef.current = phase
+      return
+    }
+
+    const justEnteredResult = prevPhaseForResultRef.current !== PHASES.RESULT
+    prevPhaseForResultRef.current = phase
 
     // All circles idle in result
     const resultStates = {}
@@ -221,6 +258,47 @@ export function useGamePhase(activeNotes) {
       resultStates[note] = 'idle'
     })
     setCircleStates(resultStates)
+
+    // Check promotion/demotion when we first enter RESULT phase
+    if (justEnteredResult) {
+      setProgressState((prevProgress) => {
+        // Apply adaptive difficulty (checks promotion first, then demotion)
+        const newProgress = applyAdaptiveDifficulty(prevProgress)
+
+        // Check if a promotion occurred
+        const { shouldPromote, nextNote } = checkPromotion(prevProgress)
+        if (shouldPromote && nextNote) {
+          // Show promotion message
+          setPromotionMessage(`New note!`)
+          setNotesEntering([nextNote])
+
+          // Clear message after duration
+          setTimeout(() => {
+            setPromotionMessage(null)
+            setNotesEntering([])
+          }, PROMOTION_MESSAGE_DURATION)
+        }
+
+        // Check if demotion occurred (compare activeNotes)
+        if (newProgress.activeNotes.length < prevProgress.activeNotes.length) {
+          const removedNote = prevProgress.activeNotes.find(
+            (note) => !newProgress.activeNotes.includes(note)
+          )
+          if (removedNote) {
+            setNotesExiting([removedNote])
+            // Note will be removed after animation
+            setTimeout(() => {
+              setNotesExiting([])
+            }, 500)
+          }
+        }
+
+        // Save to storage
+        saveProgress(newProgress)
+
+        return newProgress
+      })
+    }
   }, [phase, activeNotes])
 
   // ============ Circle Tap Handler ============
@@ -263,6 +341,11 @@ export function useGamePhase(activeNotes) {
           const { state: newState, correct, correctNote, status } = answerQuiz(
             prevState,
             note
+          )
+
+          // Record answer to progress tracker
+          setProgressState((prevProgress) =>
+            recordAnswer(prevProgress, correctNote, 'piano', correct)
           )
 
           // Show feedback
@@ -331,9 +414,13 @@ export function useGamePhase(activeNotes) {
   const restart = useCallback(() => {
     clearAllTimers()
     setQuizFeedback(null)
+    setPromotionMessage(null)
+    setNotesEntering([])
+    setNotesExiting([])
     const initial = createInitialState()
-    setGameState(startListenPhase(initial, activeNotes))
-  }, [activeNotes, clearAllTimers])
+    // Use current activeNotes from progressState
+    setGameState(startListenPhase(initial, progressState.activeNotes))
+  }, [progressState.activeNotes, clearAllTimers])
 
   // ============ Cleanup on Unmount ============
 
@@ -357,5 +444,11 @@ export function useGamePhase(activeNotes) {
     quizRound: gameState.quiz?.roundNumber,
     quizTotalRounds: gameState.quiz?.totalRounds,
     restart,
+    // Progress tracking
+    activeNotes,
+    promotionMessage,
+    notesEntering,
+    notesExiting,
+    progressState, // Expose for debugging/display
   }
 }
