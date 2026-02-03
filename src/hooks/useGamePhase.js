@@ -20,6 +20,7 @@ import {
   recordAnswer,
   applyAdaptiveDifficulty,
   checkPromotion,
+  getWeightedNoteSelection,
 } from '../engine/ProgressTracker'
 import {
   saveProgress,
@@ -223,10 +224,20 @@ export function useGamePhase() {
     // Only play question note and reset on initial entry to QUIZ phase
     // Round changes are handled by the onCircleTap timeout
     if (justEnteredQuiz) {
-      const questionNote = getCurrentQuizQuestion(gameState)
-      if (questionNote) {
-        audioEngine.playNote(questionNote, 'piano')
-      }
+      // Override the first question with weighted selection based on progress
+      const weightedQuestion = getWeightedNoteSelection(progressState, 'piano')
+
+      // Update game state with weighted question
+      setGameState((prev) => ({
+        ...prev,
+        quiz: {
+          ...prev.quiz,
+          currentQuestion: weightedQuestion,
+        },
+      }))
+
+      // Play the weighted question note
+      audioEngine.playNote(weightedQuestion, 'piano')
 
       // All circles idle during quiz
       const quizStates = {}
@@ -236,7 +247,7 @@ export function useGamePhase() {
       setCircleStates(quizStates)
       setQuizFeedback(null)
     }
-  }, [phase, quizRound, activeNotes, gameState])
+  }, [phase, quizRound, activeNotes, progressState])
 
   // ============ RESULT Phase Logic ============
 
@@ -387,11 +398,24 @@ export function useGamePhase() {
               if (status === 'complete') {
                 setGameState(startResultPhase(newState))
               } else {
-                // Play the next question note
-                const nextQuestion = getCurrentQuizQuestion(newState)
-                if (nextQuestion) {
-                  audioEngine.playNote(nextQuestion, 'piano')
-                }
+                // Use weighted selection for next question based on current progress
+                setProgressState((currentProgress) => {
+                  const weightedNextQuestion = getWeightedNoteSelection(currentProgress, 'piano')
+
+                  // Update game state with weighted next question
+                  setGameState((prev) => ({
+                    ...prev,
+                    quiz: {
+                      ...prev.quiz,
+                      currentQuestion: weightedNextQuestion,
+                    },
+                  }))
+
+                  // Play the weighted next question note
+                  audioEngine.playNote(weightedNextQuestion, 'piano')
+
+                  return currentProgress // Don't modify progress state
+                })
               }
             }, QUESTION_PAUSE)
           }, feedbackDuration)
