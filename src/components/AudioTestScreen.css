@@ -14,7 +14,47 @@
   font-family: system-ui, -apple-system, sans-serif;
   font-size: 2rem;
   font-weight: 600;
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
+}
+
+.instrument-selector {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 2.5rem;
+}
+
+.instrument-button {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  background-color: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.instrument-button:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #ffffff;
+}
+
+.instrument-button-selected {
+  border-color: #4488FF;
+  background-color: rgba(68, 136, 255, 0.2);
+  color: #ffffff;
+}
+
+.instrument-button-loading {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.instrument-button:disabled {
+  cursor: not-allowed;
 }
 
 .note-circles {

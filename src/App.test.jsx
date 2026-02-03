@@ -9,9 +9,14 @@ vi.mock('./audio', () => ({
     playNote: vi.fn().mockResolvedValue(undefined),
     isInitialized: vi.fn().mockReturnValue(true),
     getLoadingStatus: vi.fn().mockReturnValue({
-      loaded: ['piano'],
+      loaded: ['piano', 'xylophone', 'guitar-acoustic'],
       loading: [],
     }),
+    getAvailableInstruments: vi.fn().mockReturnValue([
+      'piano',
+      'xylophone',
+      'guitar-acoustic',
+    ]),
   },
 }))
 
