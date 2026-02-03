@@ -1,10 +1,30 @@
-import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+
+// Mock the audio module
+vi.mock('./audio', () => ({
+  audioEngine: {
+    init: vi.fn().mockResolvedValue(undefined),
+    loadInstrument: vi.fn().mockResolvedValue(undefined),
+  },
+}))
+
 import App from './App'
 
 describe('App', () => {
-  it('renders the heading', () => {
+  it('renders the audio loader initially', () => {
     render(<App />)
-    expect(screen.getByRole('heading', { name: /perfect pitch kids/i })).toBeInTheDocument()
+    expect(screen.getByText('Tap to Start')).toBeInTheDocument()
+  })
+
+  it('renders the game content after audio initialization', async () => {
+    render(<App />)
+
+    const loader = screen.getByRole('button')
+    fireEvent.click(loader)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /ready to play/i })).toBeInTheDocument()
+    })
   })
 })

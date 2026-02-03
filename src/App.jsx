@@ -1,10 +1,13 @@
+import AudioLoader from './components/AudioLoader'
 import './App.css'
 
 function App() {
   return (
-    <div className="app">
-      <h1>Perfect Pitch Kids</h1>
-    </div>
+    <AudioLoader>
+      <div className="app">
+        <h1>Ready to play!</h1>
+      </div>
+    </AudioLoader>
   )
 }
 

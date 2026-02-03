@@ -1,0 +1,53 @@
+.audio-loader {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #1a1a2e;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.audio-loader:active {
+  background-color: #252542;
+}
+
+.audio-loader-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.audio-loader-emoji {
+  font-size: 6rem;
+  line-height: 1;
+}
+
+.audio-loader-text {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.audio-loader-error {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+  color: #ff6b6b;
+  margin-top: 0.5rem;
+}
+
+.audio-loader-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
