@@ -439,23 +439,32 @@ describe('GameScreen', () => {
       expect(screen.getByText('Great job!')).toBeInTheDocument()
     })
 
-    it('shows score', async () => {
-      await advanceToResult()
-
-      // Should show X / 5 correct
-      expect(screen.getByText(/\/ 5 correct/)).toBeInTheDocument()
-    })
-
-    it('shows accuracy percentage', async () => {
-      await advanceToResult()
-
-      expect(screen.getByText(/% accuracy/)).toBeInTheDocument()
-    })
-
     it('shows Play Again button', async () => {
       await advanceToResult()
 
       expect(screen.getByRole('button', { name: 'Play Again' })).toBeInTheDocument()
+    })
+
+    it('does not show scores or numbers (toddler-friendly)', async () => {
+      await advanceToResult()
+
+      // Should NOT show any scores, numbers, or evaluation
+      expect(screen.queryByText(/\d+ \/ \d+/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/% accuracy/)).not.toBeInTheDocument()
+    })
+
+    it('circles are in idle state (gently pulsing)', async () => {
+      await advanceToResult()
+
+      // All circles should be idle (which has pulse animation)
+      const cCircle = screen.getByLabelText('Play C')
+      const gCircle = screen.getByLabelText('Play G')
+
+      // Idle state means no special state classes
+      expect(cCircle).not.toHaveClass('note-circle--correct')
+      expect(cCircle).not.toHaveClass('note-circle--incorrect')
+      expect(gCircle).not.toHaveClass('note-circle--correct')
+      expect(gCircle).not.toHaveClass('note-circle--incorrect')
     })
 
     it('restarts game when Play Again is clicked', async () => {

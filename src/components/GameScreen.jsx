@@ -94,14 +94,8 @@ function GameScreen() {
       </div>
 
       <div className="game-screen__footer">
-        {phase === PHASES.RESULT && quizResults && (
+        {phase === PHASES.RESULT && (
           <div className="game-screen__results">
-            <div className="game-screen__score">
-              {quizResults.correctCount} / {quizResults.totalCount} correct
-            </div>
-            <div className="game-screen__accuracy">
-              {Math.round(quizResults.accuracy * 100)}% accuracy
-            </div>
             <button
               className="game-screen__restart-button"
               onClick={restart}
