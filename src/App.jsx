@@ -1,12 +1,11 @@
 import AudioLoader from './components/AudioLoader'
+import AudioTestScreen from './components/AudioTestScreen'
 import './App.css'
 
 function App() {
   return (
     <AudioLoader>
-      <div className="app">
-        <h1>Ready to play!</h1>
-      </div>
+      <AudioTestScreen />
     </AudioLoader>
   )
 }

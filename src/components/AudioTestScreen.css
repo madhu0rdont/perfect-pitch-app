@@ -1,0 +1,82 @@
+.audio-test-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #1a1a2e;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.audio-test-title {
+  color: #ffffff;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 3rem;
+}
+
+.note-circles {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.note-circle {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 200ms ease-out;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.note-circle:hover {
+  transform: scale(1.05);
+}
+
+.note-circle:active,
+.note-circle-active {
+  transform: scale(1.15);
+}
+
+.note-label {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.status-display {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.status-item {
+  display: flex;
+  gap: 1rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 0.9rem;
+}
+
+.status-label {
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 100px;
+}
+
+.status-value {
+  color: #ffffff;
+  font-weight: 500;
+}
