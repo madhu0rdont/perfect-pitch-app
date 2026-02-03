@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { audioEngine } from '../audio'
 import NoteCircle from './NoteCircle'
+import { getLayoutConfig, getLayoutClassName } from '../utils/layoutHelper'
 import './GameScreen.css'
 
 // Hardcoded active notes for now
@@ -26,8 +27,15 @@ function GameScreen() {
     }, 400)
   }, [])
 
-  // Determine layout class based on number of circles
-  const layoutClass = ACTIVE_NOTES.length <= 3 ? 'single-row' : 'two-rows'
+  // Get layout configuration based on number of circles
+  const layoutConfig = getLayoutConfig(ACTIVE_NOTES.length)
+  const layoutClass = getLayoutClassName(ACTIVE_NOTES.length)
+
+  // CSS custom properties for dynamic sizing
+  const layoutStyle = {
+    '--circle-size': `${layoutConfig.circleSize}px`,
+    '--circle-gap': `${layoutConfig.gap}px`,
+  }
 
   return (
     <div className="game-screen">
@@ -35,15 +43,26 @@ function GameScreen() {
         <span className="game-screen__phase">Listen & Learn</span>
       </div>
 
-      <div className={`game-screen__circles ${layoutClass}`}>
-        {ACTIVE_NOTES.map((note) => (
-          <NoteCircle
-            key={note}
-            note={note}
-            onTap={handleNoteTap}
-            state={playingNote === note ? 'playing' : 'idle'}
-            disabled={false}
-          />
+      <div
+        className={`game-screen__circles ${layoutClass}`}
+        style={layoutStyle}
+      >
+        {layoutConfig.rows.map((rowIndices, rowIndex) => (
+          <div key={rowIndex} className="game-screen__row">
+            {rowIndices.map((noteIndex) => {
+              const note = ACTIVE_NOTES[noteIndex]
+              if (!note) return null
+              return (
+                <NoteCircle
+                  key={note}
+                  note={note}
+                  onTap={handleNoteTap}
+                  state={playingNote === note ? 'playing' : 'idle'}
+                  disabled={false}
+                />
+              )
+            })}
+          </div>
         ))}
       </div>
 

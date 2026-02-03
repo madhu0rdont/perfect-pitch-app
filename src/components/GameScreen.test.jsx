@@ -50,7 +50,22 @@ describe('GameScreen', () => {
       render(<GameScreen />)
 
       const circlesContainer = document.querySelector('.game-screen__circles')
-      expect(circlesContainer).toHaveClass('single-row')
+      expect(circlesContainer).toHaveClass('layout-single-row')
+    })
+
+    it('renders circles in row containers', () => {
+      render(<GameScreen />)
+
+      const rows = document.querySelectorAll('.game-screen__row')
+      expect(rows.length).toBeGreaterThan(0)
+    })
+
+    it('applies CSS custom properties for circle size and gap', () => {
+      render(<GameScreen />)
+
+      const circlesContainer = document.querySelector('.game-screen__circles')
+      expect(circlesContainer.style.getPropertyValue('--circle-size')).toBe('140px')
+      expect(circlesContainer.style.getPropertyValue('--circle-gap')).toBe('30px')
     })
   })
 

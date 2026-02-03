@@ -26,28 +26,26 @@
 .game-screen__circles {
   flex: 1 1 auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: var(--circle-gap, 20px);
   padding: 20px;
 }
 
-/* Single row layout for 2-3 circles */
-.game-screen__circles.single-row {
+/* Row container for circles */
+.game-screen__row {
+  display: flex;
   flex-direction: row;
-  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--circle-gap, 20px);
 }
 
-/* Two row layout for 4-6 circles */
-.game-screen__circles.two-rows {
-  flex-direction: row;
-  flex-wrap: wrap;
-  max-width: 500px;
-  margin: 0 auto;
-}
-
-.game-screen__circles.two-rows > * {
-  flex: 0 0 calc(50% - 10px);
+/* Circle sizing from CSS custom properties */
+.game-screen .note-circle {
+  width: var(--circle-size, 120px);
+  height: var(--circle-size, 120px);
 }
 
 /* Footer area for future controls */
@@ -57,37 +55,45 @@
   padding: 20px 0;
 }
 
-/* Responsive circle sizing using CSS custom properties */
-.game-screen .note-circle {
-  /* Calculate size based on viewport, min 100px, max 150px */
-  --circle-size: clamp(100px, 20vmin, 150px);
-  width: var(--circle-size);
-  height: var(--circle-size);
+/* Layout-specific adjustments */
+
+/* Single row: 2-3 circles */
+.game-screen__circles.layout-single-row {
+  /* Default flex-direction: column works */
 }
 
-/* Larger circles on tablets and up */
-@media (min-width: 768px) {
-  .game-screen .note-circle {
-    --circle-size: clamp(120px, 18vmin, 150px);
-  }
-
-  .game-screen__circles {
-    gap: 30px;
-  }
-
-  .game-screen__circles.two-rows {
-    max-width: 600px;
-  }
+/* 2x2 grid: 4 circles */
+.game-screen__circles.layout-2x2 {
+  /* Two rows of 2 */
 }
 
-/* Ensure circles don't overflow on very small screens */
-@media (max-width: 360px) {
+/* 3-2 layout: 5 circles */
+.game-screen__circles.layout-3-2 {
+  /* Top row of 3, bottom row of 2 centered */
+}
+
+/* 3-3 layout: 6 circles */
+.game-screen__circles.layout-3-3 {
+  /* Two rows of 3 */
+}
+
+/* Responsive adjustments for small screens */
+@media (max-width: 400px) {
   .game-screen__circles {
-    gap: 15px;
     padding: 10px;
   }
 
+  /* Scale down circles on very small screens */
   .game-screen .note-circle {
-    --circle-size: 100px;
+    width: calc(var(--circle-size, 120px) * 0.85);
+    height: calc(var(--circle-size, 120px) * 0.85);
+  }
+}
+
+/* Ensure touch targets are large enough */
+@media (hover: none) and (pointer: coarse) {
+  .game-screen .note-circle {
+    min-width: 80px;
+    min-height: 80px;
   }
 }
