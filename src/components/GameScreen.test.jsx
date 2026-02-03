@@ -45,27 +45,37 @@ describe('GameScreen', () => {
 
       expect(screen.getByText('Listen & Learn')).toBeInTheDocument()
     })
+  })
 
-    it('applies single-row layout class for 2 circles', () => {
+  describe('circle of fifths layout', () => {
+    it('renders circle of fifths container', () => {
       render(<GameScreen />)
 
-      const circlesContainer = document.querySelector('.game-screen__circles')
-      expect(circlesContainer).toHaveClass('layout-single-row')
+      const container = document.querySelector('.game-screen__circle-of-fifths')
+      expect(container).toBeInTheDocument()
     })
 
-    it('renders circles in row containers', () => {
+    it('positions notes with angle CSS variables', () => {
       render(<GameScreen />)
 
-      const rows = document.querySelectorAll('.game-screen__row')
-      expect(rows.length).toBeGreaterThan(0)
+      const positions = document.querySelectorAll('.game-screen__note-position')
+      expect(positions).toHaveLength(2)
+
+      // C4 should be at 0 degrees (12 o'clock)
+      // G4 should be at 30 degrees (1 o'clock)
+      const angles = Array.from(positions).map(
+        (el) => el.style.getPropertyValue('--angle')
+      )
+      expect(angles).toContain('0deg')
+      expect(angles).toContain('30deg')
     })
 
-    it('applies CSS custom properties for circle size and gap', () => {
+    it('applies CSS custom properties for circle size and radius', () => {
       render(<GameScreen />)
 
-      const circlesContainer = document.querySelector('.game-screen__circles')
-      expect(circlesContainer.style.getPropertyValue('--circle-size')).toBe('140px')
-      expect(circlesContainer.style.getPropertyValue('--circle-gap')).toBe('30px')
+      const container = document.querySelector('.game-screen__circle-of-fifths')
+      expect(container.style.getPropertyValue('--circle-size')).toBe('120px')
+      expect(container.style.getPropertyValue('--circle-radius')).toBe('216px')
     })
   })
 
@@ -125,7 +135,7 @@ describe('GameScreen', () => {
     })
   })
 
-  describe('layout', () => {
+  describe('layout structure', () => {
     it('has dark background color applied via CSS class', () => {
       render(<GameScreen />)
 
@@ -145,6 +155,13 @@ describe('GameScreen', () => {
 
       const footer = document.querySelector('.game-screen__footer')
       expect(footer).toBeInTheDocument()
+    })
+
+    it('has circle container for centering', () => {
+      render(<GameScreen />)
+
+      const container = document.querySelector('.game-screen__circle-container')
+      expect(container).toBeInTheDocument()
     })
   })
 })

@@ -22,30 +22,46 @@
   text-transform: uppercase;
 }
 
-/* Main circles area - grows to fill available space */
-.game-screen__circles {
+/* Container for the circle of fifths - centers it vertically and horizontally */
+.game-screen__circle-container {
   flex: 1 1 auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--circle-gap, 20px);
   padding: 20px;
 }
 
-/* Row container for circles */
-.game-screen__row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: var(--circle-gap, 20px);
+/* The circle of fifths layout container */
+.game-screen__circle-of-fifths {
+  position: relative;
+  width: calc(var(--circle-radius, 150px) * 2 + var(--circle-size, 100px));
+  height: calc(var(--circle-radius, 150px) * 2 + var(--circle-size, 100px));
+}
+
+/* Position each note around the circle */
+.game-screen__note-position {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+
+  /*
+   * Transform to position on circle:
+   * 1. Move to center (-50%, -50%)
+   * 2. Rotate to the note's angle (starts at top, goes clockwise)
+   * 3. Translate outward by radius
+   * 4. Counter-rotate so the note stays upright
+   */
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--angle, 0deg))
+    translateY(calc(var(--circle-radius, 150px) * -1))
+    rotate(calc(var(--angle, 0deg) * -1));
 }
 
 /* Circle sizing from CSS custom properties */
 .game-screen .note-circle {
-  width: var(--circle-size, 120px);
-  height: var(--circle-size, 120px);
+  width: var(--circle-size, 100px);
+  height: var(--circle-size, 100px);
 }
 
 /* Footer area for future controls */
@@ -55,45 +71,40 @@
   padding: 20px 0;
 }
 
-/* Layout-specific adjustments */
-
-/* Single row: 2-3 circles */
-.game-screen__circles.layout-single-row {
-  /* Default flex-direction: column works */
+/* Responsive adjustments for smaller screens */
+@media (max-width: 500px) {
+  .game-screen__circle-of-fifths {
+    transform: scale(0.85);
+  }
 }
 
-/* 2x2 grid: 4 circles */
-.game-screen__circles.layout-2x2 {
-  /* Two rows of 2 */
-}
-
-/* 3-2 layout: 5 circles */
-.game-screen__circles.layout-3-2 {
-  /* Top row of 3, bottom row of 2 centered */
-}
-
-/* 3-3 layout: 6 circles */
-.game-screen__circles.layout-3-3 {
-  /* Two rows of 3 */
-}
-
-/* Responsive adjustments for small screens */
 @media (max-width: 400px) {
-  .game-screen__circles {
-    padding: 10px;
+  .game-screen__circle-of-fifths {
+    transform: scale(0.75);
   }
 
-  /* Scale down circles on very small screens */
-  .game-screen .note-circle {
-    width: calc(var(--circle-size, 120px) * 0.85);
-    height: calc(var(--circle-size, 120px) * 0.85);
+  .game-screen__circle-container {
+    padding: 10px;
+  }
+}
+
+/* Larger layout for tablets/iPad */
+@media (min-width: 768px) {
+  .game-screen__circle-of-fifths {
+    transform: scale(1.2);
+  }
+}
+
+@media (min-width: 1024px) {
+  .game-screen__circle-of-fifths {
+    transform: scale(1.4);
   }
 }
 
 /* Ensure touch targets are large enough */
 @media (hover: none) and (pointer: coarse) {
   .game-screen .note-circle {
-    min-width: 80px;
-    min-height: 80px;
+    min-width: 70px;
+    min-height: 70px;
   }
 }
