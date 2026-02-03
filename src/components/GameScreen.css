@@ -16,10 +16,18 @@
 }
 
 .game-screen__phase {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  display: block;
+}
+
+.game-screen__round {
+  display: block;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 0.75rem;
+  margin-top: 4px;
 }
 
 /* Container for the circle of fifths - centers it vertically and horizontally */
@@ -64,11 +72,66 @@
   height: var(--circle-size, 100px);
 }
 
-/* Footer area for future controls */
+/* Footer area for controls and results */
 .game-screen__footer {
   flex: 0 0 auto;
-  min-height: 80px;
+  min-height: 100px;
   padding: 20px 0;
+  text-align: center;
+}
+
+/* Results display */
+.game-screen__results {
+  color: white;
+}
+
+.game-screen__score {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.game-screen__accuracy {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 16px;
+}
+
+.game-screen__restart-button {
+  background-color: hsl(120, 65%, 45%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.game-screen__restart-button:hover {
+  background-color: hsl(120, 65%, 50%);
+}
+
+.game-screen__restart-button:active {
+  transform: scale(0.98);
+}
+
+/* Quiz feedback */
+.game-screen__feedback {
+  font-size: 1.25rem;
+  font-weight: bold;
+  padding: 8px 16px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+.game-screen__feedback.correct {
+  color: hsl(120, 70%, 60%);
+}
+
+.game-screen__feedback.incorrect {
+  color: hsl(0, 70%, 65%);
 }
 
 /* Responsive adjustments for smaller screens */

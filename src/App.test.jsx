@@ -27,7 +27,7 @@ describe('App', () => {
 
     await waitFor(() => {
       // GameScreen shows the phase indicator and note circles
-      expect(screen.getByText('Listen & Learn')).toBeInTheDocument()
+      expect(screen.getByText('Listen...')).toBeInTheDocument()
       expect(screen.getByLabelText('Play C')).toBeInTheDocument()
       expect(screen.getByLabelText('Play G')).toBeInTheDocument()
     })

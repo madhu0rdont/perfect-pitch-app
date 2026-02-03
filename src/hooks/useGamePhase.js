@@ -1,0 +1,344 @@
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { audioEngine } from '../audio'
+import {
+  PHASES,
+  createInitialState,
+  startListenPhase,
+  advanceListenNote,
+  getCurrentListenNote,
+  startExplorePhase,
+  recordExploreTap,
+  startQuizPhase,
+  answerQuiz,
+  getCurrentQuizQuestion,
+  startResultPhase,
+  getResults,
+  isPhaseComplete,
+} from '../engine/PhaseManager'
+
+const LISTEN_NOTE_INTERVAL = 1500 // ms between notes in LISTEN phase
+const EXPLORE_MAX_TAPS = 6
+const EXPLORE_TIMEOUT = 15000 // 15 seconds max for EXPLORE
+const QUIZ_ROUNDS = 5
+
+/**
+ * Custom hook that wraps PhaseManager and connects it to GameScreen.
+ * Manages game phases, audio playback, and circle states.
+ *
+ * @param {string[]} activeNotes - Array of active note names
+ * @returns {Object} Game state and handlers
+ */
+export function useGamePhase(activeNotes) {
+  const [gameState, setGameState] = useState(() => {
+    const initial = createInitialState()
+    return startListenPhase(initial, activeNotes)
+  })
+
+  const [circleStates, setCircleStates] = useState({})
+  const [quizFeedback, setQuizFeedback] = useState(null)
+
+  // Refs for timers
+  const listenTimerRef = useRef(null)
+  const exploreTimerRef = useRef(null)
+  const playingTimerRef = useRef(null)
+
+  // Get current phase
+  const phase = gameState.phase
+
+  // Clear all timers helper
+  const clearAllTimers = useCallback(() => {
+    if (listenTimerRef.current) {
+      clearInterval(listenTimerRef.current)
+      listenTimerRef.current = null
+    }
+    if (exploreTimerRef.current) {
+      clearTimeout(exploreTimerRef.current)
+      exploreTimerRef.current = null
+    }
+    if (playingTimerRef.current) {
+      clearTimeout(playingTimerRef.current)
+      playingTimerRef.current = null
+    }
+  }, [])
+
+  // Set a circle to playing state temporarily
+  const playCircle = useCallback((note, duration = 400) => {
+    setCircleStates((prev) => ({ ...prev, [note]: 'playing' }))
+
+    // Clear any existing timer for this purpose
+    if (playingTimerRef.current) {
+      clearTimeout(playingTimerRef.current)
+    }
+
+    playingTimerRef.current = setTimeout(() => {
+      setCircleStates((prev) => ({ ...prev, [note]: 'idle' }))
+      playingTimerRef.current = null
+    }, duration)
+  }, [])
+
+  // ============ LISTEN Phase Logic ============
+
+  useEffect(() => {
+    if (phase !== PHASES.LISTEN) return
+
+    // Dim all circles except the current one during listen
+    const currentNote = getCurrentListenNote(gameState)
+
+    // Set initial circle states
+    const initialStates = {}
+    activeNotes.forEach((note) => {
+      initialStates[note] = note === currentNote ? 'idle' : 'dimmed'
+    })
+    setCircleStates(initialStates)
+
+    // Play the first note immediately
+    if (currentNote) {
+      audioEngine.playNote(currentNote, 'piano')
+      playCircle(currentNote, LISTEN_NOTE_INTERVAL - 200)
+    }
+
+    // Set up interval to advance through notes
+    listenTimerRef.current = setInterval(() => {
+      setGameState((prevState) => {
+        if (prevState.phase !== PHASES.LISTEN) return prevState
+
+        const { state: newState, status } = advanceListenNote(prevState)
+
+        if (status === 'complete') {
+          // Transition to EXPLORE
+          clearInterval(listenTimerRef.current)
+          listenTimerRef.current = null
+          return startExplorePhase(newState)
+        }
+
+        // Play the next note
+        const nextNote = getCurrentListenNote(newState)
+        if (nextNote) {
+          audioEngine.playNote(nextNote, 'piano')
+          playCircle(nextNote, LISTEN_NOTE_INTERVAL - 200)
+
+          // Update circle states
+          setCircleStates((prev) => {
+            const updated = { ...prev }
+            activeNotes.forEach((note) => {
+              updated[note] = note === nextNote ? 'idle' : 'dimmed'
+            })
+            return updated
+          })
+        }
+
+        return newState
+      })
+    }, LISTEN_NOTE_INTERVAL)
+
+    return () => {
+      if (listenTimerRef.current) {
+        clearInterval(listenTimerRef.current)
+        listenTimerRef.current = null
+      }
+    }
+  }, [phase, activeNotes, playCircle, gameState])
+
+  // ============ EXPLORE Phase Logic ============
+
+  useEffect(() => {
+    if (phase !== PHASES.EXPLORE) return
+
+    // All circles are idle during explore
+    const exploreStates = {}
+    activeNotes.forEach((note) => {
+      exploreStates[note] = 'idle'
+    })
+    setCircleStates(exploreStates)
+
+    // Set timeout for explore phase (15 seconds max)
+    exploreTimerRef.current = setTimeout(() => {
+      setGameState((prevState) => {
+        if (prevState.phase !== PHASES.EXPLORE) return prevState
+        return startQuizPhase(prevState, activeNotes, QUIZ_ROUNDS)
+      })
+    }, EXPLORE_TIMEOUT)
+
+    return () => {
+      if (exploreTimerRef.current) {
+        clearTimeout(exploreTimerRef.current)
+        exploreTimerRef.current = null
+      }
+    }
+  }, [phase, activeNotes])
+
+  // ============ QUIZ Phase Logic ============
+
+  // Initialize QUIZ phase (play first question, set circle states)
+  const quizRound = gameState.quiz?.roundNumber
+  const prevPhaseRef = useRef(null)
+  const prevRoundRef = useRef(null)
+
+  useEffect(() => {
+    if (phase !== PHASES.QUIZ) {
+      prevPhaseRef.current = phase
+      return
+    }
+
+    const justEnteredQuiz = prevPhaseRef.current !== PHASES.QUIZ
+    const roundChanged = prevRoundRef.current !== null && prevRoundRef.current !== quizRound
+
+    prevPhaseRef.current = phase
+    prevRoundRef.current = quizRound
+
+    // Only play question note and reset on initial entry to QUIZ phase
+    // Round changes are handled by the onCircleTap timeout
+    if (justEnteredQuiz) {
+      const questionNote = getCurrentQuizQuestion(gameState)
+      if (questionNote) {
+        audioEngine.playNote(questionNote, 'piano')
+      }
+
+      // All circles idle during quiz
+      const quizStates = {}
+      activeNotes.forEach((note) => {
+        quizStates[note] = 'idle'
+      })
+      setCircleStates(quizStates)
+      setQuizFeedback(null)
+    }
+  }, [phase, quizRound, activeNotes, gameState])
+
+  // ============ RESULT Phase Logic ============
+
+  useEffect(() => {
+    if (phase !== PHASES.RESULT) return
+
+    // All circles idle in result
+    const resultStates = {}
+    activeNotes.forEach((note) => {
+      resultStates[note] = 'idle'
+    })
+    setCircleStates(resultStates)
+  }, [phase, activeNotes])
+
+  // ============ Circle Tap Handler ============
+
+  const onCircleTap = useCallback(
+    (note) => {
+      // Ignore taps during LISTEN phase
+      if (phase === PHASES.LISTEN) return
+
+      if (phase === PHASES.EXPLORE) {
+        // Play the note
+        audioEngine.playNote(note, 'piano')
+        playCircle(note)
+
+        // Record tap
+        setGameState((prevState) => {
+          const { state: newState, status } = recordExploreTap(
+            prevState,
+            EXPLORE_MAX_TAPS
+          )
+
+          if (status === 'complete') {
+            // Clear explore timeout and transition to QUIZ
+            if (exploreTimerRef.current) {
+              clearTimeout(exploreTimerRef.current)
+              exploreTimerRef.current = null
+            }
+            return startQuizPhase(newState, activeNotes, QUIZ_ROUNDS)
+          }
+
+          return newState
+        })
+      }
+
+      if (phase === PHASES.QUIZ) {
+        // Play the tapped note
+        audioEngine.playNote(note, 'piano')
+
+        setGameState((prevState) => {
+          const { state: newState, correct, correctNote, status } = answerQuiz(
+            prevState,
+            note
+          )
+
+          // Show feedback
+          setQuizFeedback({ correct, correctNote, answer: note })
+
+          // Set circle state based on correct/incorrect
+          if (correct) {
+            setCircleStates((prev) => ({ ...prev, [note]: 'correct' }))
+          } else {
+            setCircleStates((prev) => ({
+              ...prev,
+              [note]: 'incorrect',
+              [correctNote]: 'correct',
+            }))
+          }
+
+          // Transition after feedback delay
+          setTimeout(() => {
+            if (status === 'complete') {
+              setGameState(startResultPhase(newState))
+            } else {
+              // Reset circle states and play next question
+              const resetStates = {}
+              activeNotes.forEach((n) => {
+                resetStates[n] = 'idle'
+              })
+              setCircleStates(resetStates)
+              setQuizFeedback(null)
+
+              // Play the next question note
+              const nextQuestion = getCurrentQuizQuestion(newState)
+              if (nextQuestion) {
+                setTimeout(() => {
+                  audioEngine.playNote(nextQuestion, 'piano')
+                }, 300)
+              }
+            }
+          }, 1000)
+
+          return newState
+        })
+      }
+
+      if (phase === PHASES.RESULT) {
+        // Allow free play in result phase too
+        audioEngine.playNote(note, 'piano')
+        playCircle(note)
+      }
+    },
+    [phase, activeNotes, playCircle]
+  )
+
+  // ============ Restart Handler ============
+
+  const restart = useCallback(() => {
+    clearAllTimers()
+    setQuizFeedback(null)
+    const initial = createInitialState()
+    setGameState(startListenPhase(initial, activeNotes))
+  }, [activeNotes, clearAllTimers])
+
+  // ============ Cleanup on Unmount ============
+
+  useEffect(() => {
+    return () => {
+      clearAllTimers()
+    }
+  }, [clearAllTimers])
+
+  // ============ Return Value ============
+
+  const quizResults = phase === PHASES.RESULT ? getResults(gameState) : null
+
+  return {
+    phase,
+    circleStates,
+    onCircleTap,
+    quizResults,
+    quizFeedback,
+    currentQuestion: getCurrentQuizQuestion(gameState),
+    quizRound: gameState.quiz?.roundNumber,
+    quizTotalRounds: gameState.quiz?.totalRounds,
+    restart,
+  }
+}
