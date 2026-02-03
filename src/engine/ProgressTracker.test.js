@@ -9,6 +9,11 @@ import {
   canAddNewNote,
   addNextNote,
   incrementSessions,
+  checkPromotion,
+  applyPromotion,
+  checkDemotion,
+  applyDemotion,
+  applyAdaptiveDifficulty,
 } from './ProgressTracker'
 import { MASTERY_THRESHOLDS, NOTE_INTRODUCTION_ORDER } from '../constants/notes'
 
@@ -609,6 +614,591 @@ describe('ProgressTracker', () => {
       incrementSessions(state)
 
       expect(state.sessionsPlayed).toBe(originalSessions)
+    })
+  })
+
+  // ============ Promotion Tests ============
+
+  describe('checkPromotion()', () => {
+    it('returns shouldPromote false when notes are not mastered', () => {
+      const state = createInitialState()
+
+      const result = checkPromotion(state)
+
+      expect(result.shouldPromote).toBe(false)
+      expect(result.nextNote).toBeNull()
+    })
+
+    it('returns shouldPromote true when all notes are mastered', () => {
+      let state = createInitialState()
+
+      // Master both C4 and G4 (80% accuracy + streak of 3)
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      const result = checkPromotion(state)
+
+      expect(result.shouldPromote).toBe(true)
+      expect(result.nextNote).toBe('D4') // Third note in introduction order
+    })
+
+    it('returns shouldPromote false if even one note is below threshold', () => {
+      let state = createInitialState()
+
+      // Master C4
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+
+      // G4 is not mastered (only 70% accuracy)
+      for (let i = 0; i < 7; i++) {
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+      for (let i = 0; i < 3; i++) {
+        state = recordAnswer(state, 'G4', 'piano', false)
+      }
+
+      const result = checkPromotion(state)
+
+      expect(result.shouldPromote).toBe(false)
+    })
+
+    it('returns shouldPromote false if streak is below threshold', () => {
+      let state = createInitialState()
+
+      // Both have high accuracy but C4 streak is broken
+      for (let i = 0; i < 9; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+      // Break C4 streak with a wrong answer, then one correct
+      state = recordAnswer(state, 'C4', 'piano', false)
+      state = recordAnswer(state, 'C4', 'piano', true) // streak = 1
+      state = recordAnswer(state, 'G4', 'piano', true)
+
+      const result = checkPromotion(state)
+
+      expect(result.shouldPromote).toBe(false)
+    })
+
+    it('returns correct next note from introduction order', () => {
+      let state = createInitialState()
+
+      // Master initial notes
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      expect(checkPromotion(state).nextNote).toBe('D4')
+
+      // Add D4 and master it
+      state = applyPromotion(state)
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'D4', 'piano', true)
+      }
+
+      expect(checkPromotion(state).nextNote).toBe('A4')
+    })
+
+    it('returns shouldPromote false at maxActiveNotes', () => {
+      let state = createInitialState()
+
+      // Add notes up to max and master them all
+      while (state.activeNotes.length < MASTERY_THRESHOLDS.maxActiveNotes) {
+        // Master current notes
+        for (const note of state.activeNotes) {
+          for (let i = 0; i < 10; i++) {
+            state = recordAnswer(state, note, 'piano', true)
+          }
+        }
+        state = applyPromotion(state)
+      }
+
+      // Master all notes at max
+      for (const note of state.activeNotes) {
+        for (let i = 0; i < 10; i++) {
+          state = recordAnswer(state, note, 'piano', true)
+        }
+      }
+
+      const result = checkPromotion(state)
+
+      expect(state.activeNotes.length).toBe(MASTERY_THRESHOLDS.maxActiveNotes)
+      expect(result.shouldPromote).toBe(false)
+      expect(result.nextNote).toBeNull()
+    })
+
+    it('returns shouldPromote false when all notes are already active', () => {
+      let state = createInitialState()
+
+      // Manually set all notes as active (bypassing normal flow)
+      state = {
+        ...state,
+        activeNotes: [...NOTE_INTRODUCTION_ORDER],
+      }
+
+      // Master them all
+      for (const note of state.activeNotes) {
+        state = {
+          ...state,
+          noteProgress: {
+            ...state.noteProgress,
+            [note]: {
+              piano: {
+                attempts: 10,
+                correct: 10,
+                streak: 10,
+                recentResults: Array(10).fill(true),
+              },
+            },
+          },
+        }
+      }
+
+      const result = checkPromotion(state)
+
+      expect(result.shouldPromote).toBe(false)
+      expect(result.nextNote).toBeNull()
+    })
+  })
+
+  describe('applyPromotion()', () => {
+    it('adds the next note to activeNotes', () => {
+      let state = createInitialState()
+
+      // Master initial notes
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      state = applyPromotion(state)
+
+      expect(state.activeNotes).toContain('D4')
+      expect(state.activeNotes).toHaveLength(3)
+    })
+
+    it('initializes progress for new note with empty stats', () => {
+      let state = createInitialState()
+
+      // Master initial notes
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      state = applyPromotion(state)
+
+      expect(state.noteProgress.D4).toBeDefined()
+      expect(state.noteProgress.D4.piano).toBeDefined()
+      expect(state.noteProgress.D4.piano.attempts).toBe(0)
+      expect(state.noteProgress.D4.piano.correct).toBe(0)
+      expect(state.noteProgress.D4.piano.streak).toBe(0)
+      expect(state.noteProgress.D4.piano.recentResults).toEqual([])
+    })
+
+    it('increments currentStage on promotion', () => {
+      let state = createInitialState()
+
+      expect(state.currentStage).toBe(1)
+
+      // Master and promote
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      state = applyPromotion(state)
+
+      expect(state.currentStage).toBe(2)
+    })
+
+    it('returns same state if promotion conditions not met', () => {
+      const state = createInitialState()
+
+      const result = applyPromotion(state)
+
+      expect(result).toBe(state) // Same reference, no change
+      expect(result.activeNotes).toHaveLength(2)
+    })
+
+    it('preserves existing progress data if note was previously demoted', () => {
+      let state = createInitialState()
+
+      // Master notes and promote to get D4
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+      state = applyPromotion(state)
+
+      // Record some progress on D4
+      state = recordAnswer(state, 'D4', 'piano', true)
+      state = recordAnswer(state, 'D4', 'piano', true)
+      state = recordAnswer(state, 'D4', 'piano', false)
+      expect(state.noteProgress.D4.piano.attempts).toBe(3)
+
+      // Demote D4
+      state = applyDemotion(state, 'D4')
+      expect(state.activeNotes).not.toContain('D4')
+
+      // Progress data should still exist
+      expect(state.noteProgress.D4.piano.attempts).toBe(3)
+
+      // Re-promote (master remaining notes again)
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+      state = applyPromotion(state)
+
+      // D4 should be back with preserved data
+      expect(state.activeNotes).toContain('D4')
+      expect(state.noteProgress.D4.piano.attempts).toBe(3)
+    })
+  })
+
+  // ============ Demotion Tests ============
+
+  describe('checkDemotion()', () => {
+    it('returns shouldDemote false with no low-accuracy notes', () => {
+      let state = createInitialState()
+
+      // Both notes have decent accuracy (60%)
+      for (let i = 0; i < 6; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+      for (let i = 0; i < 4; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+        state = recordAnswer(state, 'G4', 'piano', false)
+      }
+
+      const result = checkDemotion(state)
+
+      expect(result.shouldDemote).toBe(false)
+      expect(result.noteToRemove).toBeNull()
+    })
+
+    it('returns shouldDemote true when any note drops below 50%', () => {
+      let state = createInitialState()
+
+      // Add a third note first (need more than 2 to demote)
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 0, correct: 0, streak: 0, recentResults: [] } },
+        },
+      }
+
+      // C4 at 40% accuracy (below 50% threshold)
+      for (let i = 0; i < 4; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+      for (let i = 0; i < 6; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+      }
+
+      const result = checkDemotion(state)
+
+      expect(result.shouldDemote).toBe(true)
+    })
+
+    it('returns the most recently added note as noteToRemove', () => {
+      let state = createInitialState()
+
+      // Add D4 as third note
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 0, correct: 0, streak: 0, recentResults: [] } },
+        },
+      }
+
+      // Make C4 struggle (trigger demotion)
+      for (let i = 0; i < 2; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+      for (let i = 0; i < 8; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+      }
+
+      const result = checkDemotion(state)
+
+      expect(result.noteToRemove).toBe('D4') // Last in array
+    })
+
+    it('returns shouldDemote false when only 2 notes are active', () => {
+      let state = createInitialState() // Only C4 and G4
+
+      // Make C4 struggle badly (20% accuracy)
+      for (let i = 0; i < 2; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+      for (let i = 0; i < 8; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+      }
+
+      const result = checkDemotion(state)
+
+      expect(result.shouldDemote).toBe(false)
+      expect(result.noteToRemove).toBeNull()
+    })
+
+    it('triggers demotion at exactly 49% accuracy', () => {
+      let state = createInitialState()
+
+      // Add third note
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 0, correct: 0, streak: 0, recentResults: [] } },
+        },
+      }
+
+      // C4 at 49% (below 50%)
+      // With 10 results: 4.9 correct rounds to 4 correct, 6 wrong = 40%
+      // Let's use 10 results with exactly 4 correct = 40%
+      for (let i = 0; i < 4; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+      for (let i = 0; i < 6; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+      }
+
+      const result = checkDemotion(state)
+
+      expect(getRollingAccuracy(state.noteProgress.C4.piano)).toBe(0.4)
+      expect(result.shouldDemote).toBe(true)
+    })
+
+    it('does not trigger demotion at exactly 50% accuracy', () => {
+      let state = createInitialState()
+
+      // Add third note
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 0, correct: 0, streak: 0, recentResults: [] } },
+        },
+      }
+
+      // C4 at exactly 50%
+      for (let i = 0; i < 5; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+      for (let i = 0; i < 5; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+      }
+
+      const result = checkDemotion(state)
+
+      expect(getRollingAccuracy(state.noteProgress.C4.piano)).toBe(0.5)
+      expect(result.shouldDemote).toBe(false)
+    })
+  })
+
+  describe('applyDemotion()', () => {
+    it('removes the specified note from activeNotes', () => {
+      let state = createInitialState()
+
+      // Add third note
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 5, correct: 3, streak: 1, recentResults: [true, false, true] } },
+        },
+      }
+
+      state = applyDemotion(state, 'D4')
+
+      expect(state.activeNotes).not.toContain('D4')
+      expect(state.activeNotes).toEqual(['C4', 'G4'])
+    })
+
+    it('preserves progress data for the removed note', () => {
+      let state = createInitialState()
+
+      // Add and record progress for D4
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          ...state.noteProgress,
+          D4: {
+            piano: {
+              attempts: 15,
+              correct: 8,
+              streak: 2,
+              recentResults: [true, false, true, true, false, false, true, true, false, true],
+            },
+          },
+        },
+      }
+
+      state = applyDemotion(state, 'D4')
+
+      // Progress data still exists
+      expect(state.noteProgress.D4).toBeDefined()
+      expect(state.noteProgress.D4.piano.attempts).toBe(15)
+      expect(state.noteProgress.D4.piano.correct).toBe(8)
+      expect(state.noteProgress.D4.piano.recentResults).toHaveLength(10)
+    })
+
+    it('decrements currentStage on demotion', () => {
+      let state = createInitialState()
+
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        currentStage: 2,
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 0, correct: 0, streak: 0, recentResults: [] } },
+        },
+      }
+
+      state = applyDemotion(state, 'D4')
+
+      expect(state.currentStage).toBe(1)
+    })
+
+    it('does not demote below stage 1', () => {
+      let state = createInitialState()
+
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        currentStage: 1,
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 0, correct: 0, streak: 0, recentResults: [] } },
+        },
+      }
+
+      state = applyDemotion(state, 'D4')
+
+      expect(state.currentStage).toBe(1) // Stays at 1
+    })
+
+    it('returns same state if trying to demote below 2 notes', () => {
+      const state = createInitialState() // Only 2 notes
+
+      const result = applyDemotion(state, 'G4')
+
+      expect(result).toBe(state) // Same reference
+      expect(result.activeNotes).toHaveLength(2)
+    })
+
+    it('returns same state if note is not active', () => {
+      const state = createInitialState()
+
+      const result = applyDemotion(state, 'D4') // D4 not active
+
+      expect(result).toBe(state)
+    })
+  })
+
+  // ============ Promotion/Demotion Interaction Tests ============
+
+  describe('promotion and demotion interaction', () => {
+    it('promotion takes priority when both conditions are met', () => {
+      let state = createInitialState()
+
+      // Add third note so demotion is possible
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          C4: { piano: { attempts: 10, correct: 10, streak: 10, recentResults: Array(10).fill(true) } },
+          G4: { piano: { attempts: 10, correct: 10, streak: 10, recentResults: Array(10).fill(true) } },
+          D4: { piano: { attempts: 10, correct: 3, streak: 0, recentResults: [true, false, false, true, false, false, false, true, false, false] } },
+        },
+      }
+
+      // D4 is at 30% (below demotion threshold)
+      expect(getRollingAccuracy(state.noteProgress.D4.piano)).toBe(0.3)
+
+      // But C4 and G4 are mastered (all notes mastered = promotion eligible)
+      // However, D4 is NOT mastered, so promotion should NOT trigger
+      const promotionCheck = checkPromotion(state)
+      const demotionCheck = checkDemotion(state)
+
+      expect(promotionCheck.shouldPromote).toBe(false) // D4 not mastered
+      expect(demotionCheck.shouldDemote).toBe(true)
+    })
+
+    it('applyAdaptiveDifficulty promotes when all notes mastered', () => {
+      let state = createInitialState()
+
+      // Master both notes
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      state = applyAdaptiveDifficulty(state)
+
+      expect(state.activeNotes).toContain('D4')
+      expect(state.activeNotes).toHaveLength(3)
+    })
+
+    it('applyAdaptiveDifficulty demotes when a note is struggling', () => {
+      let state = createInitialState()
+
+      // Add third note
+      state = {
+        ...state,
+        activeNotes: ['C4', 'G4', 'D4'],
+        noteProgress: {
+          ...state.noteProgress,
+          D4: { piano: { attempts: 0, correct: 0, streak: 0, recentResults: [] } },
+        },
+      }
+
+      // Make one note struggle
+      for (let i = 0; i < 2; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+      for (let i = 0; i < 8; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+      }
+
+      state = applyAdaptiveDifficulty(state)
+
+      expect(state.activeNotes).not.toContain('D4')
+      expect(state.activeNotes).toHaveLength(2)
+    })
+
+    it('applyAdaptiveDifficulty returns unchanged state when no action needed', () => {
+      let state = createInitialState()
+
+      // Mediocre performance - not mastered, not struggling
+      for (let i = 0; i < 6; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+      for (let i = 0; i < 4; i++) {
+        state = recordAnswer(state, 'C4', 'piano', false)
+        state = recordAnswer(state, 'G4', 'piano', false)
+      }
+
+      const result = applyAdaptiveDifficulty(state)
+
+      expect(result.activeNotes).toEqual(['C4', 'G4'])
     })
   })
 })

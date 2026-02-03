@@ -279,3 +279,181 @@ export function incrementSessions(state) {
     sessionsPlayed: state.sessionsPlayed + 1,
   }
 }
+
+// ============ Promotion Logic ============
+
+/**
+ * Check if conditions are met for promotion (adding a new note).
+ * Promotion happens when ALL active notes are mastered on all active instruments.
+ *
+ * @param {Object} state - Current progress state
+ * @returns {{ shouldPromote: boolean, nextNote: string | null }}
+ */
+export function checkPromotion(state) {
+  const { activeNotes, activeInstruments, noteProgress } = state
+
+  // Check if we've reached max active notes
+  if (activeNotes.length >= MASTERY_THRESHOLDS.maxActiveNotes) {
+    return { shouldPromote: false, nextNote: null }
+  }
+
+  // Find the next note not yet in activeNotes
+  const nextNote = NOTE_INTRODUCTION_ORDER.find(
+    (note) => !activeNotes.includes(note)
+  )
+
+  // If all notes are already active, can't promote
+  if (!nextNote) {
+    return { shouldPromote: false, nextNote: null }
+  }
+
+  // Check if ALL current notes are mastered on ALL instruments
+  for (const note of activeNotes) {
+    for (const instrument of activeInstruments) {
+      const progress = noteProgress[note]?.[instrument]
+      if (!progress || !isNoteMastered(progress)) {
+        return { shouldPromote: false, nextNote: null }
+      }
+    }
+  }
+
+  return { shouldPromote: true, nextNote }
+}
+
+/**
+ * Apply promotion by adding the next note to activeNotes.
+ * Initializes progress entry with empty stats for current instruments.
+ *
+ * @param {Object} state - Current progress state
+ * @returns {Object} New state with next note added
+ */
+export function applyPromotion(state) {
+  const { shouldPromote, nextNote } = checkPromotion(state)
+
+  if (!shouldPromote || !nextNote) {
+    return state
+  }
+
+  const { activeNotes, activeInstruments, noteProgress } = state
+
+  // Create progress entries for the new note (or use existing if note was demoted before)
+  const existingProgress = noteProgress[nextNote] || {}
+  const newNoteProgress = { ...existingProgress }
+
+  // Ensure progress entry exists for each active instrument
+  for (const instrument of activeInstruments) {
+    if (!newNoteProgress[instrument]) {
+      newNoteProgress[instrument] = createNoteProgress()
+    }
+  }
+
+  return {
+    ...state,
+    activeNotes: [...activeNotes, nextNote],
+    noteProgress: {
+      ...noteProgress,
+      [nextNote]: newNoteProgress,
+    },
+    currentStage: state.currentStage + 1,
+  }
+}
+
+// ============ Demotion Logic ============
+
+/**
+ * Check if conditions are met for demotion (removing a note).
+ * Demotion happens when any note's rolling accuracy drops below demotionAccuracy.
+ * Never demotes below 2 active notes.
+ *
+ * @param {Object} state - Current progress state
+ * @returns {{ shouldDemote: boolean, noteToRemove: string | null }}
+ */
+export function checkDemotion(state) {
+  const { activeNotes, activeInstruments, noteProgress } = state
+
+  // Never demote below 2 notes
+  if (activeNotes.length <= 2) {
+    return { shouldDemote: false, noteToRemove: null }
+  }
+
+  // Check if any note is below demotion threshold on any instrument
+  let shouldDemote = false
+
+  for (const note of activeNotes) {
+    for (const instrument of activeInstruments) {
+      const progress = noteProgress[note]?.[instrument]
+      if (progress && progress.recentResults.length > 0) {
+        const accuracy = getRollingAccuracy(progress)
+        if (accuracy < MASTERY_THRESHOLDS.demotionAccuracy) {
+          shouldDemote = true
+          break
+        }
+      }
+    }
+    if (shouldDemote) break
+  }
+
+  if (!shouldDemote) {
+    return { shouldDemote: false, noteToRemove: null }
+  }
+
+  // Remove the most recently added note (last in array)
+  const noteToRemove = activeNotes[activeNotes.length - 1]
+
+  return { shouldDemote: true, noteToRemove }
+}
+
+/**
+ * Apply demotion by removing a note from activeNotes.
+ * Keeps progress data intact so historical data is preserved if the note returns.
+ *
+ * @param {Object} state - Current progress state
+ * @param {string} noteToRemove - Note to remove from active notes
+ * @returns {Object} New state with note removed from activeNotes
+ */
+export function applyDemotion(state, noteToRemove) {
+  const { activeNotes } = state
+
+  // Don't demote below 2 notes
+  if (activeNotes.length <= 2) {
+    return state
+  }
+
+  // Don't remove if note isn't active
+  if (!activeNotes.includes(noteToRemove)) {
+    return state
+  }
+
+  // Remove from activeNotes but keep noteProgress intact
+  return {
+    ...state,
+    activeNotes: activeNotes.filter((note) => note !== noteToRemove),
+    // noteProgress is preserved - historical data kept
+    currentStage: Math.max(1, state.currentStage - 1),
+  }
+}
+
+/**
+ * Check and apply adaptive difficulty adjustments.
+ * If both promotion and demotion conditions are met simultaneously,
+ * promotion takes priority (overall performance is considered strong
+ * if mastery conditions are met).
+ *
+ * @param {Object} state - Current progress state
+ * @returns {Object} New state after any adjustments
+ */
+export function applyAdaptiveDifficulty(state) {
+  // Check promotion first (takes priority)
+  const { shouldPromote } = checkPromotion(state)
+  if (shouldPromote) {
+    return applyPromotion(state)
+  }
+
+  // Check demotion
+  const { shouldDemote, noteToRemove } = checkDemotion(state)
+  if (shouldDemote && noteToRemove) {
+    return applyDemotion(state, noteToRemove)
+  }
+
+  return state
+}
