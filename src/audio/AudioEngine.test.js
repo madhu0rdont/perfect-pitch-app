@@ -22,6 +22,19 @@ const mockPluckSynthInstance = {
   dispose: vi.fn(),
 }
 
+const mockNoiseSynthInstance = {
+  toDestination: vi.fn().mockReturnThis(),
+  connect: vi.fn().mockReturnThis(),
+  disconnect: vi.fn().mockReturnThis(),
+  triggerAttackRelease: vi.fn(),
+  dispose: vi.fn(),
+  volume: { value: 0 },
+}
+
+const mockFilterInstance = {
+  toDestination: vi.fn().mockReturnThis(),
+}
+
 // Mock Tone.js before importing AudioEngine
 vi.mock('tone', () => {
   // Create mock classes
@@ -44,11 +57,25 @@ vi.mock('tone', () => {
     }
   }
 
+  class MockNoiseSynth {
+    constructor() {
+      Object.assign(this, mockNoiseSynthInstance)
+    }
+  }
+
+  class MockFilter {
+    constructor() {
+      Object.assign(this, mockFilterInstance)
+    }
+  }
+
   return {
     start: vi.fn().mockResolvedValue(undefined),
     Sampler: MockSampler,
     FMSynth: MockFMSynth,
     PluckSynth: MockPluckSynth,
+    NoiseSynth: MockNoiseSynth,
+    Filter: MockFilter,
     Synth: class MockSynth {
       constructor() {
         this.toDestination = vi.fn().mockReturnThis()
@@ -87,6 +114,12 @@ describe('AudioEngine', () => {
     mockPluckSynthInstance.triggerAttack.mockClear()
     mockPluckSynthInstance.triggerRelease.mockClear()
     mockPluckSynthInstance.dispose.mockClear()
+
+    mockNoiseSynthInstance.toDestination.mockClear().mockReturnThis()
+    mockNoiseSynthInstance.connect.mockClear().mockReturnThis()
+    mockNoiseSynthInstance.disconnect.mockClear().mockReturnThis()
+    mockNoiseSynthInstance.triggerAttackRelease.mockClear()
+    mockNoiseSynthInstance.dispose.mockClear()
 
     engine = new AudioEngine()
   })
@@ -228,6 +261,42 @@ describe('AudioEngine', () => {
     })
   })
 
+  describe('playReward()', () => {
+    it('creates NoiseSynth on first call', () => {
+      engine.playReward()
+
+      expect(mockNoiseSynthInstance.toDestination).toHaveBeenCalled()
+    })
+
+    it('triggers a short noise burst', () => {
+      engine.playReward()
+
+      expect(mockNoiseSynthInstance.triggerAttackRelease).toHaveBeenCalledWith(
+        '32n'
+      )
+    })
+
+    it('reuses the same synth on subsequent calls', () => {
+      engine.playReward()
+      engine.playReward()
+      engine.playReward()
+
+      // toDestination only called once (synth created once)
+      expect(mockNoiseSynthInstance.toDestination).toHaveBeenCalledTimes(1)
+      // But triggerAttackRelease called three times
+      expect(mockNoiseSynthInstance.triggerAttackRelease).toHaveBeenCalledTimes(
+        3
+      )
+    })
+
+    it('connects through a lowpass filter for softer sound', () => {
+      engine.playReward()
+
+      expect(mockNoiseSynthInstance.disconnect).toHaveBeenCalled()
+      expect(mockNoiseSynthInstance.connect).toHaveBeenCalled()
+    })
+  })
+
   describe('getLoadingStatus()', () => {
     it('returns empty arrays initially', () => {
       const status = engine.getLoadingStatus()
@@ -299,6 +368,13 @@ describe('AudioEngine', () => {
 
       expect(engine.isInitialized()).toBe(false)
       expect(engine.getLoadingStatus().loaded).toEqual([])
+    })
+
+    it('disposes reward synth if created', () => {
+      engine.playReward() // Create reward synth
+      engine.dispose()
+
+      expect(mockNoiseSynthInstance.dispose).toHaveBeenCalled()
     })
   })
 })

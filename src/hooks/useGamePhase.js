@@ -21,6 +21,12 @@ const EXPLORE_MAX_TAPS = 6
 const EXPLORE_TIMEOUT = 15000 // 15 seconds max for EXPLORE
 const QUIZ_ROUNDS = 5
 
+// Quiz feedback timing - tuned for toddler processing speed
+// Too fast and they can't process; too slow and they lose interest
+const CORRECT_FEEDBACK_DURATION = 800 // ms to show correct state
+const INCORRECT_FEEDBACK_DURATION = 1200 // ms to show incorrect + replay correct note
+const QUESTION_PAUSE = 1000 // ms pause before next question
+
 /**
  * Custom hook that wraps PhaseManager and connects it to GameScreen.
  * Manages game phases, audio playback, and circle states.
@@ -262,39 +268,50 @@ export function useGamePhase(activeNotes) {
           // Show feedback
           setQuizFeedback({ correct, correctNote, answer: note })
 
-          // Set circle state based on correct/incorrect
+          // Determine feedback duration based on correct/incorrect
+          const feedbackDuration = correct
+            ? CORRECT_FEEDBACK_DURATION
+            : INCORRECT_FEEDBACK_DURATION
+
           if (correct) {
+            // Correct answer: show 'correct' state, play reward sound
             setCircleStates((prev) => ({ ...prev, [note]: 'correct' }))
+            audioEngine.playReward()
           } else {
+            // Incorrect answer: dim tapped circle, highlight correct and replay
+            // Silence is the "wrong" feedback - no negative sound
             setCircleStates((prev) => ({
               ...prev,
               [note]: 'incorrect',
-              [correctNote]: 'correct',
+              [correctNote]: 'playing',
             }))
+            // Replay the correct note so child hears what it should have been
+            audioEngine.playNote(correctNote, 'piano')
           }
 
-          // Transition after feedback delay
+          // After feedback duration, reset and prepare for next question
           setTimeout(() => {
-            if (status === 'complete') {
-              setGameState(startResultPhase(newState))
-            } else {
-              // Reset circle states and play next question
-              const resetStates = {}
-              activeNotes.forEach((n) => {
-                resetStates[n] = 'idle'
-              })
-              setCircleStates(resetStates)
-              setQuizFeedback(null)
+            // Reset all circles to idle
+            const resetStates = {}
+            activeNotes.forEach((n) => {
+              resetStates[n] = 'idle'
+            })
+            setCircleStates(resetStates)
+            setQuizFeedback(null)
 
-              // Play the next question note
-              const nextQuestion = getCurrentQuizQuestion(newState)
-              if (nextQuestion) {
-                setTimeout(() => {
+            // After additional pause, either show results or play next question
+            setTimeout(() => {
+              if (status === 'complete') {
+                setGameState(startResultPhase(newState))
+              } else {
+                // Play the next question note
+                const nextQuestion = getCurrentQuizQuestion(newState)
+                if (nextQuestion) {
                   audioEngine.playNote(nextQuestion, 'piano')
-                }, 300)
+                }
               }
-            }
-          }, 1000)
+            }, QUESTION_PAUSE)
+          }, feedbackDuration)
 
           return newState
         })

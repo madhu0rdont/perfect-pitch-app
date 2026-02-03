@@ -124,6 +124,7 @@ class AudioEngine {
     this.instruments = new Map()
     this.loadingInstruments = new Set()
     this.initialized = false
+    this.rewardSynth = null
   }
 
   /**
@@ -247,6 +248,42 @@ class AudioEngine {
   }
 
   /**
+   * Play a short, non-tonal reward sound for correct answers.
+   * Uses filtered noise to create a soft "shh" percussion that won't
+   * interfere with the child's pitch memory.
+   */
+  playReward() {
+    // Lazily create the reward synth on first use
+    if (!this.rewardSynth) {
+      this.rewardSynth = new Tone.NoiseSynth({
+        noise: {
+          type: 'white',
+        },
+        envelope: {
+          attack: 0.005,
+          decay: 0.1,
+          sustain: 0,
+          release: 0.05,
+        },
+      }).toDestination()
+
+      // Add a filter to make it softer and less harsh
+      const filter = new Tone.Filter({
+        frequency: 3000,
+        type: 'lowpass',
+      }).toDestination()
+
+      this.rewardSynth.disconnect()
+      this.rewardSynth.connect(filter)
+
+      // Reduce volume so it's subtle
+      this.rewardSynth.volume.value = -12
+    }
+
+    this.rewardSynth.triggerAttackRelease('32n')
+  }
+
+  /**
    * Get the loading status of all instruments.
    * @returns {{ loaded: string[], loading: string[] }}
    */
@@ -284,6 +321,11 @@ class AudioEngine {
     this.instruments.clear()
     this.loadingInstruments.clear()
     this.initialized = false
+
+    if (this.rewardSynth) {
+      this.rewardSynth.dispose()
+      this.rewardSynth = null
+    }
   }
 }
 
