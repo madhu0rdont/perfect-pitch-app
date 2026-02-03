@@ -8,7 +8,7 @@ const mockSamplerInstance = {
   dispose: vi.fn(),
 }
 
-const mockMetalSynthInstance = {
+const mockFMSynthInstance = {
   toDestination: vi.fn().mockReturnThis(),
   triggerAttackRelease: vi.fn(),
   triggerRelease: vi.fn(),
@@ -32,9 +32,9 @@ vi.mock('tone', () => {
     }
   }
 
-  class MockMetalSynth {
+  class MockFMSynth {
     constructor() {
-      Object.assign(this, mockMetalSynthInstance)
+      Object.assign(this, mockFMSynthInstance)
     }
   }
 
@@ -47,7 +47,7 @@ vi.mock('tone', () => {
   return {
     start: vi.fn().mockResolvedValue(undefined),
     Sampler: MockSampler,
-    MetalSynth: MockMetalSynth,
+    FMSynth: MockFMSynth,
     PluckSynth: MockPluckSynth,
     Synth: class MockSynth {
       constructor() {
@@ -78,10 +78,10 @@ describe('AudioEngine', () => {
     mockSamplerInstance.releaseAll.mockClear()
     mockSamplerInstance.dispose.mockClear()
 
-    mockMetalSynthInstance.toDestination.mockClear().mockReturnThis()
-    mockMetalSynthInstance.triggerAttackRelease.mockClear()
-    mockMetalSynthInstance.triggerRelease.mockClear()
-    mockMetalSynthInstance.dispose.mockClear()
+    mockFMSynthInstance.toDestination.mockClear().mockReturnThis()
+    mockFMSynthInstance.triggerAttackRelease.mockClear()
+    mockFMSynthInstance.triggerRelease.mockClear()
+    mockFMSynthInstance.dispose.mockClear()
 
     mockPluckSynthInstance.toDestination.mockClear().mockReturnThis()
     mockPluckSynthInstance.triggerAttack.mockClear()
@@ -123,10 +123,10 @@ describe('AudioEngine', () => {
       expect(status.loading).not.toContain('piano')
     })
 
-    it('loads xylophone instrument using MetalSynth', async () => {
-      await engine.loadInstrument('xylophone')
+    it('loads violin instrument using FMSynth', async () => {
+      await engine.loadInstrument('violin')
       const status = engine.getLoadingStatus()
-      expect(status.loaded).toContain('xylophone')
+      expect(status.loaded).toContain('violin')
     })
 
     it('loads guitar-acoustic instrument using PluckSynth', async () => {
@@ -180,10 +180,10 @@ describe('AudioEngine', () => {
     it('logs warning when playing on unloaded instrument', async () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-      await engine.playNote('C4', 'xylophone')
+      await engine.playNote('C4', 'violin')
 
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("instrument 'xylophone' not loaded")
+        expect.stringContaining("instrument 'violin' not loaded")
       )
       warnSpy.mockRestore()
     })
@@ -198,12 +198,12 @@ describe('AudioEngine', () => {
       )
     })
 
-    it('plays note on xylophone (MetalSynth)', async () => {
-      await engine.loadInstrument('xylophone')
-      await engine.playNote('C4', 'xylophone')
+    it('plays note on violin (FMSynth)', async () => {
+      await engine.loadInstrument('violin')
+      await engine.playNote('C4', 'violin')
 
-      // MetalSynth uses frequency and different call signature
-      expect(mockMetalSynthInstance.triggerAttackRelease).toHaveBeenCalled()
+      // FMSynth uses frequency and different call signature
+      expect(mockFMSynthInstance.triggerAttackRelease).toHaveBeenCalled()
     })
 
     it('plays note on guitar (PluckSynth)', async () => {
@@ -243,12 +243,12 @@ describe('AudioEngine', () => {
 
     it('shows multiple loaded instruments', async () => {
       await engine.loadInstrument('piano')
-      await engine.loadInstrument('xylophone')
+      await engine.loadInstrument('violin')
       await engine.loadInstrument('guitar-acoustic')
 
       const status = engine.getLoadingStatus()
       expect(status.loaded).toContain('piano')
-      expect(status.loaded).toContain('xylophone')
+      expect(status.loaded).toContain('violin')
       expect(status.loaded).toContain('guitar-acoustic')
     })
   })
@@ -257,7 +257,7 @@ describe('AudioEngine', () => {
     it('returns list of all available instruments', () => {
       const instruments = engine.getAvailableInstruments()
       expect(instruments).toContain('piano')
-      expect(instruments).toContain('xylophone')
+      expect(instruments).toContain('violin')
       expect(instruments).toContain('guitar-acoustic')
     })
   })
@@ -271,10 +271,10 @@ describe('AudioEngine', () => {
     })
 
     it('calls triggerRelease on synth instruments', async () => {
-      await engine.loadInstrument('xylophone')
+      await engine.loadInstrument('violin')
       engine.stopAll()
 
-      expect(mockMetalSynthInstance.triggerRelease).toHaveBeenCalled()
+      expect(mockFMSynthInstance.triggerRelease).toHaveBeenCalled()
     })
 
     it('does not throw when no instruments loaded', () => {
@@ -285,11 +285,11 @@ describe('AudioEngine', () => {
   describe('dispose()', () => {
     it('disposes all instruments', async () => {
       await engine.loadInstrument('piano')
-      await engine.loadInstrument('xylophone')
+      await engine.loadInstrument('violin')
       engine.dispose()
 
       expect(mockSamplerInstance.dispose).toHaveBeenCalled()
-      expect(mockMetalSynthInstance.dispose).toHaveBeenCalled()
+      expect(mockFMSynthInstance.dispose).toHaveBeenCalled()
     })
 
     it('clears all state', async () => {

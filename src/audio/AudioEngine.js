@@ -52,19 +52,29 @@ const PIANO_SAMPLES = {
  * Will be replaced with real samples in Step 6.
  */
 const SYNTH_CONFIGS = {
-  xylophone: {
-    type: 'metal',
+  violin: {
+    type: 'fm',
     options: {
-      frequency: 200,
-      envelope: {
-        attack: 0.001,
-        decay: 0.4,
-        release: 0.2,
+      harmonicity: 3.01,
+      modulationIndex: 14,
+      oscillator: {
+        type: 'triangle',
       },
-      harmonicity: 5.1,
-      modulationIndex: 32,
-      resonance: 4000,
-      octaves: 1.5,
+      envelope: {
+        attack: 0.2,
+        decay: 0.3,
+        sustain: 0.8,
+        release: 1.2,
+      },
+      modulation: {
+        type: 'square',
+      },
+      modulationEnvelope: {
+        attack: 0.01,
+        decay: 0.5,
+        sustain: 0.2,
+        release: 0.1,
+      },
     },
   },
   'guitar-acoustic': {
@@ -88,14 +98,11 @@ class SynthInstrument {
   }
 
   triggerAttackRelease(note, duration) {
-    if (this.type === 'metal') {
-      // MetalSynth uses frequency, not note names
-      const freq = Tone.Frequency(note).toFrequency()
-      this.synth.triggerAttackRelease(duration, Tone.now(), freq)
-    } else if (this.type === 'pluck') {
+    if (this.type === 'pluck') {
       // PluckSynth has a different signature
       this.synth.triggerAttack(note, Tone.now())
     } else {
+      // FMSynth, Synth, etc. use standard triggerAttackRelease with note names
       this.synth.triggerAttackRelease(note, duration)
     }
   }
@@ -193,8 +200,8 @@ class AudioEngine {
     const config = SYNTH_CONFIGS[name]
 
     let synth
-    if (config.type === 'metal') {
-      synth = new Tone.MetalSynth(config.options).toDestination()
+    if (config.type === 'fm') {
+      synth = new Tone.FMSynth(config.options).toDestination()
     } else if (config.type === 'pluck') {
       synth = new Tone.PluckSynth(config.options).toDestination()
     } else {
@@ -255,7 +262,7 @@ class AudioEngine {
    * @returns {string[]}
    */
   getAvailableInstruments() {
-    return ['piano', 'xylophone', 'guitar-acoustic']
+    return ['piano', 'violin', 'guitar-acoustic']
   }
 
   /**

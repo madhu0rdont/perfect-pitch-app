@@ -7,7 +7,7 @@ const TEST_NOTES = ['C4', 'E4', 'G4']
 
 const INSTRUMENT_LABELS = {
   piano: 'Piano',
-  xylophone: 'Xylophone',
+  violin: 'Violin',
   'guitar-acoustic': 'Guitar',
 }
 
@@ -24,7 +24,7 @@ function AudioTestScreen() {
   // Load additional instruments on mount
   useEffect(() => {
     const loadInstruments = async () => {
-      await audioEngine.loadInstrument('xylophone')
+      await audioEngine.loadInstrument('violin')
       await audioEngine.loadInstrument('guitar-acoustic')
       setLoadedInstruments(audioEngine.getLoadingStatus().loaded)
     }

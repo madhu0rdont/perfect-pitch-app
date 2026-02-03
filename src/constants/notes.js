@@ -93,7 +93,7 @@ export const NOTE_INTRODUCTION_ORDER = [
  * Instruments in order of introduction.
  * Piano first (most familiar), then pitched percussion, then strings.
  */
-export const INSTRUMENTS = ['piano', 'xylophone', 'guitar-acoustic']
+export const INSTRUMENTS = ['piano', 'violin', 'guitar-acoustic']
 
 /**
  * Thresholds for the adaptive difficulty system.

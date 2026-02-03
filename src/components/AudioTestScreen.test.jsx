@@ -7,12 +7,12 @@ vi.mock('../audio', () => ({
     playNote: vi.fn().mockResolvedValue(undefined),
     isInitialized: vi.fn().mockReturnValue(true),
     getLoadingStatus: vi.fn().mockReturnValue({
-      loaded: ['piano', 'xylophone', 'guitar-acoustic'],
+      loaded: ['piano', 'violin', 'guitar-acoustic'],
       loading: [],
     }),
     getAvailableInstruments: vi.fn().mockReturnValue([
       'piano',
-      'xylophone',
+      'violin',
       'guitar-acoustic',
     ]),
     loadInstrument: vi.fn().mockResolvedValue(undefined),
@@ -133,7 +133,7 @@ describe('AudioTestScreen', () => {
       render(<AudioTestScreen />)
 
       await waitFor(() => {
-        const xyloButton = screen.getByRole('button', { name: 'Xylophone' })
+        const xyloButton = screen.getByRole('button', { name: 'Violin' })
         fireEvent.click(xyloButton)
         expect(xyloButton).toHaveAttribute('aria-pressed', 'true')
       })
@@ -143,11 +143,11 @@ describe('AudioTestScreen', () => {
       render(<AudioTestScreen />)
 
       await waitFor(() => {
-        expect(screen.getByRole('button', { name: 'Xylophone' })).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Violin' })).toBeInTheDocument()
       })
 
-      // Select xylophone
-      const xyloButton = screen.getByRole('button', { name: 'Xylophone' })
+      // Select violin
+      const xyloButton = screen.getByRole('button', { name: 'Violin' })
       fireEvent.click(xyloButton)
 
       // Play a note
@@ -155,7 +155,7 @@ describe('AudioTestScreen', () => {
       fireEvent.click(cCircle)
 
       await waitFor(() => {
-        expect(audioEngine.playNote).toHaveBeenCalledWith('C4', 'xylophone')
+        expect(audioEngine.playNote).toHaveBeenCalledWith('C4', 'violin')
       })
     })
 
@@ -190,22 +190,22 @@ describe('AudioTestScreen', () => {
     it('shows loading state for instruments not yet loaded', () => {
       audioEngine.getLoadingStatus.mockReturnValue({
         loaded: ['piano'],
-        loading: ['xylophone'],
+        loading: ['violin'],
       })
 
       render(<AudioTestScreen />)
 
-      const xyloButton = screen.getByRole('button', { name: /Xylophone/ })
+      const xyloButton = screen.getByRole('button', { name: /Violin/ })
       expect(xyloButton).toBeDisabled()
     })
   })
 
   describe('loads additional instruments on mount', () => {
-    it('calls loadInstrument for xylophone and guitar', async () => {
+    it('calls loadInstrument for violin and guitar', async () => {
       render(<AudioTestScreen />)
 
       await waitFor(() => {
-        expect(audioEngine.loadInstrument).toHaveBeenCalledWith('xylophone')
+        expect(audioEngine.loadInstrument).toHaveBeenCalledWith('violin')
         expect(audioEngine.loadInstrument).toHaveBeenCalledWith('guitar-acoustic')
       })
     })
