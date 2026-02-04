@@ -7,6 +7,8 @@
 
 import * as Tone from 'tone'
 
+// ============ Sample URLs ============
+
 /**
  * Salamander Grand Piano sample URLs
  * We provide a subset of notes; Tone.Sampler pitch-shifts to fill gaps
@@ -47,33 +49,64 @@ const PIANO_SAMPLES = {
 }
 
 /**
- * Synth configurations for fallback instruments.
- * These approximate the sound of real instruments using synthesis.
- * Will be replaced with real samples in Step 6.
+ * Tonejs-instruments sample URLs
+ * https://nbrosowsky.github.io/tonejs-instruments/samples/
+ * We provide roughly every 3rd note across octaves 3-5
  */
-const SYNTH_CONFIGS = {
+const TONEJS_INSTRUMENTS_BASE_URL =
+  'https://nbrosowsky.github.io/tonejs-instruments/samples/'
+
+/**
+ * Violin samples - covering octaves 3, 4, 5
+ * Every 3rd note to minimize download while allowing pitch-shifting
+ */
+const VIOLIN_SAMPLES = {
+  A3: 'A3.mp3',
+  C4: 'C4.mp3',
+  E4: 'E4.mp3',
+  G4: 'G4.mp3',
+  A4: 'A4.mp3',
+  C5: 'C5.mp3',
+  E5: 'E5.mp3',
+  G5: 'G5.mp3',
+  A5: 'A5.mp3',
+}
+
+/**
+ * Guitar (acoustic) samples - covering octaves 3, 4, 5
+ * Every 3rd note to minimize download while allowing pitch-shifting
+ */
+const GUITAR_ACOUSTIC_SAMPLES = {
+  A2: 'A2.mp3',
+  C3: 'C3.mp3',
+  E3: 'E3.mp3',
+  G3: 'G3.mp3',
+  A3: 'A3.mp3',
+  C4: 'C4.mp3',
+  E4: 'E4.mp3',
+  G4: 'G4.mp3',
+  A4: 'A4.mp3',
+  C5: 'C5.mp3',
+}
+
+// ============ Synth Fallbacks ============
+
+/**
+ * Synth configurations for fallback instruments.
+ * Used when sample loading fails (network error, bad URL, etc.)
+ */
+const SYNTH_FALLBACKS = {
   violin: {
-    type: 'fm',
+    type: 'synth',
     options: {
-      harmonicity: 3.01,
-      modulationIndex: 14,
       oscillator: {
-        type: 'triangle',
+        type: 'sine',
       },
       envelope: {
-        attack: 0.2,
-        decay: 0.3,
-        sustain: 0.8,
-        release: 1.2,
-      },
-      modulation: {
-        type: 'square',
-      },
-      modulationEnvelope: {
-        attack: 0.01,
-        decay: 0.5,
-        sustain: 0.2,
-        release: 0.1,
+        attack: 0.3, // Slow attack like a bowed string
+        decay: 0.1,
+        sustain: 0.9, // Long sustain
+        release: 0.8,
       },
     },
   },
@@ -119,10 +152,16 @@ class SynthInstrument {
   }
 }
 
+/**
+ * List of all available instruments
+ */
+const ALL_INSTRUMENTS = ['piano', 'violin', 'guitar-acoustic']
+
 class AudioEngine {
   constructor() {
     this.instruments = new Map()
     this.loadingInstruments = new Set()
+    this.instrumentStatus = new Map() // Track 'loading', 'ready', 'fallback', 'error'
     this.initialized = false
     this.rewardSynth = null
   }
@@ -153,8 +192,8 @@ class AudioEngine {
 
   /**
    * Load an instrument by name.
-   * Piano uses real samples, xylophone and guitar use synth fallbacks.
-   * @param {string} name - Instrument name ('piano', 'xylophone', 'guitar-acoustic')
+   * Uses real samples for all instruments, with synth fallback on error.
+   * @param {string} name - Instrument name ('piano', 'violin', 'guitar-acoustic')
    * @returns {Promise<void>} Resolves when instrument is ready
    */
   async loadInstrument(name) {
@@ -168,27 +207,104 @@ class AudioEngine {
       return
     }
 
+    if (!ALL_INSTRUMENTS.includes(name)) {
+      console.warn(`AudioEngine: Instrument '${name}' not supported`)
+      return
+    }
+
     this.loadingInstruments.add(name)
+    this.instrumentStatus.set(name, 'loading')
     console.log(`AudioEngine: Loading instrument '${name}'...`)
 
     try {
       let instrument
 
       if (name === 'piano') {
-        instrument = await this._createPianoSampler()
-      } else if (SYNTH_CONFIGS[name]) {
-        instrument = this._createSynthInstrument(name)
-      } else {
-        console.warn(`AudioEngine: Instrument '${name}' not yet implemented`)
-        this.loadingInstruments.delete(name)
-        return
+        instrument = await this._createSampler(PIANO_SAMPLES, SALAMANDER_BASE_URL)
+      } else if (name === 'violin') {
+        instrument = await this._createSampler(
+          VIOLIN_SAMPLES,
+          TONEJS_INSTRUMENTS_BASE_URL + 'violin/'
+        )
+      } else if (name === 'guitar-acoustic') {
+        instrument = await this._createSampler(
+          GUITAR_ACOUSTIC_SAMPLES,
+          TONEJS_INSTRUMENTS_BASE_URL + 'guitar-acoustic/'
+        )
       }
 
       this.instruments.set(name, instrument)
+      this.instrumentStatus.set(name, 'ready')
       console.log(`AudioEngine: Instrument '${name}' loaded`)
+    } catch (error) {
+      // Try synth fallback for violin and guitar
+      if (SYNTH_FALLBACKS[name]) {
+        console.warn(
+          `AudioEngine: Failed to load '${name}' samples, using synth fallback`,
+          error
+        )
+        const fallback = this._createSynthFallback(name)
+        this.instruments.set(name, fallback)
+        this.instrumentStatus.set(name, 'fallback')
+      } else {
+        console.error(`AudioEngine: Failed to load '${name}'`, error)
+        this.instrumentStatus.set(name, 'error')
+        throw error
+      }
     } finally {
       this.loadingInstruments.delete(name)
     }
+  }
+
+  /**
+   * Load all instruments in parallel.
+   * @returns {Promise<void>} Resolves when all instruments are ready
+   */
+  async loadAllInstruments() {
+    console.log('AudioEngine: Loading all instruments...')
+    await Promise.all(ALL_INSTRUMENTS.map((name) => this.loadInstrument(name)))
+    console.log('AudioEngine: All instruments loaded')
+  }
+
+  /**
+   * Get detailed loading progress for all instruments.
+   * @returns {{ loaded: number, total: number, instruments: Object }}
+   */
+  getLoadingProgress() {
+    const instruments = {}
+    let loaded = 0
+
+    for (const name of ALL_INSTRUMENTS) {
+      const status = this.instrumentStatus.get(name) || 'pending'
+      instruments[name] = status
+      if (status === 'ready' || status === 'fallback') {
+        loaded++
+      }
+    }
+
+    return {
+      loaded,
+      total: ALL_INSTRUMENTS.length,
+      instruments,
+    }
+  }
+
+  /**
+   * Create a Tone.Sampler from sample URLs.
+   * @private
+   * @param {Object} samples - Map of note names to filenames
+   * @param {string} baseUrl - Base URL for samples
+   * @returns {Promise<Tone.Sampler>}
+   */
+  _createSampler(samples, baseUrl) {
+    return new Promise((resolve, reject) => {
+      const sampler = new Tone.Sampler({
+        urls: samples,
+        baseUrl: baseUrl,
+        onload: () => resolve(sampler),
+        onerror: (err) => reject(err),
+      }).toDestination()
+    })
   }
 
   /**
@@ -197,35 +313,17 @@ class AudioEngine {
    * @param {string} name - Instrument name
    * @returns {SynthInstrument}
    */
-  _createSynthInstrument(name) {
-    const config = SYNTH_CONFIGS[name]
+  _createSynthFallback(name) {
+    const config = SYNTH_FALLBACKS[name]
 
     let synth
-    if (config.type === 'fm') {
-      synth = new Tone.FMSynth(config.options).toDestination()
-    } else if (config.type === 'pluck') {
+    if (config.type === 'pluck') {
       synth = new Tone.PluckSynth(config.options).toDestination()
     } else {
       synth = new Tone.Synth(config.options).toDestination()
     }
 
     return new SynthInstrument(synth, config.type)
-  }
-
-  /**
-   * Create a Tone.Sampler for the Salamander piano.
-   * @private
-   * @returns {Promise<Tone.Sampler>}
-   */
-  _createPianoSampler() {
-    return new Promise((resolve, reject) => {
-      const sampler = new Tone.Sampler({
-        urls: PIANO_SAMPLES,
-        baseUrl: SALAMANDER_BASE_URL,
-        onload: () => resolve(sampler),
-        onerror: (err) => reject(err),
-      }).toDestination()
-    })
   }
 
   /**
@@ -320,6 +418,7 @@ class AudioEngine {
     })
     this.instruments.clear()
     this.loadingInstruments.clear()
+    this.instrumentStatus.clear()
     this.initialized = false
 
     if (this.rewardSynth) {

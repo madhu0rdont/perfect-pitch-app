@@ -51,3 +51,25 @@
     opacity: 0.5;
   }
 }
+
+/* Instrument loading list */
+.audio-loader-instruments {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.audio-loader-instrument {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.audio-loader-instrument.loading {
+  animation: pulse 1s ease-in-out infinite;
+}

@@ -1,11 +1,20 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock the audio module
 vi.mock('../audio', () => ({
   audioEngine: {
     init: vi.fn().mockResolvedValue(undefined),
-    loadInstrument: vi.fn().mockResolvedValue(undefined),
+    loadAllInstruments: vi.fn().mockResolvedValue(undefined),
+    getLoadingProgress: vi.fn().mockReturnValue({
+      loaded: 0,
+      total: 3,
+      instruments: {
+        piano: 'pending',
+        violin: 'pending',
+        'guitar-acoustic': 'pending',
+      },
+    }),
   },
 }))
 
@@ -15,6 +24,9 @@ import { audioEngine } from '../audio'
 describe('AudioLoader', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Reset to default resolved value
+    audioEngine.init.mockResolvedValue(undefined)
+    audioEngine.loadAllInstruments.mockResolvedValue(undefined)
   })
 
   it('renders tap to start state initially', () => {
@@ -30,10 +42,8 @@ describe('AudioLoader', () => {
   })
 
   it('shows loading state when tapped', async () => {
-    // Make loadInstrument take some time
-    audioEngine.loadInstrument.mockImplementation(
-      () => new Promise((resolve) => setTimeout(resolve, 100))
-    )
+    // Make loadAllInstruments hang
+    audioEngine.loadAllInstruments.mockReturnValue(new Promise(() => {}))
 
     render(
       <AudioLoader>
@@ -48,7 +58,7 @@ describe('AudioLoader', () => {
     expect(screen.getByText('🎹')).toBeInTheDocument()
   })
 
-  it('calls audioEngine.init and loadInstrument on tap', async () => {
+  it('calls audioEngine.init and loadAllInstruments on tap', async () => {
     render(
       <AudioLoader>
         <div>Game Content</div>
@@ -63,7 +73,7 @@ describe('AudioLoader', () => {
     })
 
     await waitFor(() => {
-      expect(audioEngine.loadInstrument).toHaveBeenCalledWith('piano')
+      expect(audioEngine.loadAllInstruments).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -105,10 +115,8 @@ describe('AudioLoader', () => {
   })
 
   it('ignores taps while loading', async () => {
-    // Make loadInstrument return a promise that doesn't resolve immediately
-    audioEngine.loadInstrument.mockImplementation(
-      () => new Promise(() => {}) // Never resolves during test
-    )
+    // Make loadAllInstruments hang
+    audioEngine.loadAllInstruments.mockReturnValue(new Promise(() => {}))
 
     render(
       <AudioLoader>
@@ -126,5 +134,41 @@ describe('AudioLoader', () => {
     fireEvent.click(loader)
     fireEvent.click(loader)
     expect(audioEngine.init).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows instrument loading progress', async () => {
+    vi.useFakeTimers()
+
+    // Make loadAllInstruments hang
+    audioEngine.loadAllInstruments.mockReturnValue(new Promise(() => {}))
+    audioEngine.getLoadingProgress.mockReturnValue({
+      loaded: 1,
+      total: 3,
+      instruments: {
+        piano: 'ready',
+        violin: 'loading',
+        'guitar-acoustic': 'pending',
+      },
+    })
+
+    render(
+      <AudioLoader>
+        <div>Game Content</div>
+      </AudioLoader>
+    )
+
+    const loader = screen.getByRole('button')
+    fireEvent.click(loader)
+
+    // Advance timer to trigger the progress polling
+    await act(async () => {
+      vi.advanceTimersByTime(100)
+    })
+
+    expect(screen.getByText(/Piano/)).toBeInTheDocument()
+    expect(screen.getByText(/Violin/)).toBeInTheDocument()
+    expect(screen.getByText(/Guitar/)).toBeInTheDocument()
+
+    vi.useRealTimers()
   })
 })

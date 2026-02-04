@@ -5,9 +5,19 @@ import { describe, it, expect, vi } from 'vitest'
 vi.mock('./audio', () => ({
   audioEngine: {
     init: vi.fn().mockResolvedValue(undefined),
-    loadInstrument: vi.fn().mockResolvedValue(undefined),
+    loadAllInstruments: vi.fn().mockResolvedValue(undefined),
     playNote: vi.fn().mockResolvedValue(undefined),
+    playReward: vi.fn(),
     isInitialized: vi.fn().mockReturnValue(true),
+    getLoadingProgress: vi.fn().mockReturnValue({
+      loaded: 3,
+      total: 3,
+      instruments: {
+        piano: 'ready',
+        violin: 'ready',
+        'guitar-acoustic': 'ready',
+      },
+    }),
   },
 }))
 
