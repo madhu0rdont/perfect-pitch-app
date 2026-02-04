@@ -4,6 +4,8 @@ import {
   recordAnswer,
   getRollingAccuracy,
   isNoteMastered,
+  getEligibleInstruments,
+  selectQuizInstrument,
   getWeightedNoteSelection,
   getNoteOverallAccuracy,
   canAddNewNote,
@@ -15,7 +17,7 @@ import {
   applyDemotion,
   applyAdaptiveDifficulty,
 } from './ProgressTracker'
-import { MASTERY_THRESHOLDS, NOTE_INTRODUCTION_ORDER } from '../constants/notes'
+import { MASTERY_THRESHOLDS, NOTE_INTRODUCTION_ORDER, INSTRUMENTS } from '../constants/notes'
 
 describe('ProgressTracker', () => {
   describe('createInitialState()', () => {
@@ -353,6 +355,212 @@ describe('ProgressTracker', () => {
       expect(getRollingAccuracy(progress)).toBe(0.7)
       expect(progress.streak).toBe(7)
       expect(isNoteMastered(progress)).toBe(false)
+    })
+  })
+
+  // ============ Instrument Progression Tests ============
+
+  describe('getEligibleInstruments()', () => {
+    it('returns only piano for a new note', () => {
+      const state = createInitialState()
+
+      const eligible = getEligibleInstruments(state, 'C4')
+
+      expect(eligible).toEqual(['piano'])
+    })
+
+    it('returns piano and violin after piano mastery', () => {
+      let state = createInitialState()
+
+      // Master C4 on piano (10 correct = 100% accuracy, streak = 10)
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+
+      const eligible = getEligibleInstruments(state, 'C4')
+
+      expect(eligible).toEqual(['piano', 'violin'])
+    })
+
+    it('returns all three instruments after violin mastery', () => {
+      let state = createInitialState()
+
+      // Master C4 on piano
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+
+      // Master C4 on violin
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'violin', true)
+      }
+
+      const eligible = getEligibleInstruments(state, 'C4')
+
+      expect(eligible).toEqual(['piano', 'violin', 'guitar-acoustic'])
+    })
+
+    it('does not skip instruments in progression', () => {
+      let state = createInitialState()
+
+      // Only master piano, not violin
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+
+      // Even if we somehow have guitar data, violin not mastered means no guitar
+      state = recordAnswer(state, 'C4', 'guitar-acoustic', true)
+
+      const eligible = getEligibleInstruments(state, 'C4')
+
+      // Should only show piano and violin (violin unlocked, guitar not yet)
+      expect(eligible).toEqual(['piano', 'violin'])
+    })
+
+    it('handles notes not in state gracefully', () => {
+      const state = createInitialState()
+
+      // D4 not in initial state
+      const eligible = getEligibleInstruments(state, 'D4')
+
+      expect(eligible).toEqual(['piano'])
+    })
+  })
+
+  describe('selectQuizInstrument()', () => {
+    it('returns piano when only piano eligible', () => {
+      const state = createInitialState()
+
+      // Run 50 times to verify it always returns piano
+      for (let i = 0; i < 50; i++) {
+        expect(selectQuizInstrument(state, 'C4')).toBe('piano')
+      }
+    })
+
+    it('favors newest instrument (60% threshold)', () => {
+      let state = createInitialState()
+
+      // Master C4 on piano to unlock violin
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+
+      // Run 500 times and count distribution
+      const counts = { piano: 0, violin: 0 }
+      for (let i = 0; i < 500; i++) {
+        counts[selectQuizInstrument(state, 'C4')]++
+      }
+
+      // Violin should be selected ~60% of the time
+      const violinRatio = counts.violin / 500
+      expect(violinRatio).toBeGreaterThan(0.5) // At least 50%
+      expect(violinRatio).toBeLessThan(0.7) // At most 70%
+
+      // Piano should still be selected sometimes (~40%)
+      expect(counts.piano).toBeGreaterThan(100) // At least 20%
+    })
+
+    it('distributes 40% across multiple mastered instruments', () => {
+      let state = createInitialState()
+
+      // Master C4 on piano and violin to unlock guitar
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'C4', 'violin', true)
+      }
+
+      // Run 1000 times and count distribution
+      const counts = { piano: 0, violin: 0, 'guitar-acoustic': 0 }
+      for (let i = 0; i < 1000; i++) {
+        counts[selectQuizInstrument(state, 'C4')]++
+      }
+
+      // Guitar (newest) should be ~60%
+      const guitarRatio = counts['guitar-acoustic'] / 1000
+      expect(guitarRatio).toBeGreaterThan(0.5)
+      expect(guitarRatio).toBeLessThan(0.7)
+
+      // Piano and violin should share ~40%
+      expect(counts.piano).toBeGreaterThan(50)
+      expect(counts.violin).toBeGreaterThan(50)
+    })
+  })
+
+  describe('recordAnswer() with instruments', () => {
+    it('tracks progress per instrument correctly', () => {
+      let state = createInitialState()
+
+      // Record answers on piano
+      state = recordAnswer(state, 'C4', 'piano', true)
+      state = recordAnswer(state, 'C4', 'piano', true)
+
+      // Record answers on violin
+      state = recordAnswer(state, 'C4', 'violin', true)
+      state = recordAnswer(state, 'C4', 'violin', false)
+      state = recordAnswer(state, 'C4', 'violin', true)
+
+      // Piano progress
+      expect(state.noteProgress.C4.piano.attempts).toBe(2)
+      expect(state.noteProgress.C4.piano.correct).toBe(2)
+      expect(state.noteProgress.C4.piano.streak).toBe(2)
+
+      // Violin progress (independent)
+      expect(state.noteProgress.C4.violin.attempts).toBe(3)
+      expect(state.noteProgress.C4.violin.correct).toBe(2)
+      expect(state.noteProgress.C4.violin.streak).toBe(1) // Reset after false
+    })
+  })
+
+  describe('checkPromotion() with instruments', () => {
+    it('requires mastery on all eligible instruments', () => {
+      let state = createInitialState()
+
+      // Master both notes on piano
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      // Both are now eligible for violin
+      expect(getEligibleInstruments(state, 'C4')).toEqual(['piano', 'violin'])
+      expect(getEligibleInstruments(state, 'G4')).toEqual(['piano', 'violin'])
+
+      // Promotion should NOT happen yet (violin not mastered)
+      const result1 = checkPromotion(state)
+      expect(result1.shouldPromote).toBe(false)
+
+      // Master both notes on violin
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'violin', true)
+        state = recordAnswer(state, 'G4', 'violin', true)
+      }
+
+      // Now promotion should happen
+      const result2 = checkPromotion(state)
+      expect(result2.shouldPromote).toBe(true)
+      expect(result2.nextNote).toBe('D4')
+    })
+
+    it('blocks promotion if one note is behind on instruments', () => {
+      let state = createInitialState()
+
+      // Master C4 on piano and violin
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+        state = recordAnswer(state, 'C4', 'violin', true)
+      }
+
+      // Master G4 only on piano (not violin)
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'G4', 'piano', true)
+      }
+
+      // G4 is eligible for violin but not mastered on it
+      expect(getEligibleInstruments(state, 'G4')).toEqual(['piano', 'violin'])
+
+      // Promotion should be blocked
+      const result = checkPromotion(state)
+      expect(result.shouldPromote).toBe(false)
     })
   })
 

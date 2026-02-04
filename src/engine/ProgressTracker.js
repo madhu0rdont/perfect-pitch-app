@@ -8,6 +8,7 @@
 import {
   NOTE_INTRODUCTION_ORDER,
   MASTERY_THRESHOLDS,
+  INSTRUMENTS,
 } from '../constants/notes'
 
 /**
@@ -132,6 +133,73 @@ export function isNoteMastered(noteProgress) {
   )
 }
 
+// ============ Instrument Progression ============
+
+/**
+ * Get the instruments a note is eligible to be quizzed on.
+ * A note starts on piano only. Once mastered on piano, violin becomes eligible.
+ * Once mastered on violin, guitar becomes eligible.
+ *
+ * @param {Object} state - Current progress state
+ * @param {string} note - Note name (e.g., 'C4')
+ * @returns {string[]} Array of eligible instrument names
+ */
+export function getEligibleInstruments(state, note) {
+  const noteProgress = state.noteProgress[note]
+  const eligible = []
+
+  // Piano is always eligible (first instrument)
+  eligible.push(INSTRUMENTS[0]) // 'piano'
+
+  // Check each subsequent instrument for eligibility
+  for (let i = 1; i < INSTRUMENTS.length; i++) {
+    const previousInstrument = INSTRUMENTS[i - 1]
+    const previousProgress = noteProgress?.[previousInstrument]
+
+    // Only eligible if mastered on previous instrument
+    if (previousProgress && isNoteMastered(previousProgress)) {
+      eligible.push(INSTRUMENTS[i])
+    } else {
+      // Stop checking - can't skip instruments in the progression
+      break
+    }
+  }
+
+  return eligible
+}
+
+/**
+ * Select which instrument to use for a quiz question on a given note.
+ * 60% chance of selecting the newest eligible instrument (the one being learned).
+ * 40% chance spread across previously mastered instruments.
+ *
+ * @param {Object} state - Current progress state
+ * @param {string} note - Note name (e.g., 'C4')
+ * @returns {string} Selected instrument name
+ */
+export function selectQuizInstrument(state, note) {
+  const eligible = getEligibleInstruments(state, note)
+
+  // If only one instrument eligible, return it
+  if (eligible.length === 1) {
+    return eligible[0]
+  }
+
+  // Newest eligible instrument (the one being learned)
+  const newestInstrument = eligible[eligible.length - 1]
+  // Previously mastered instruments
+  const masteredInstruments = eligible.slice(0, -1)
+
+  // 60% chance to select newest, 40% spread across mastered
+  if (Math.random() < 0.6) {
+    return newestInstrument
+  }
+
+  // Randomly select from mastered instruments
+  const randomIndex = Math.floor(Math.random() * masteredInstruments.length)
+  return masteredInstruments[randomIndex]
+}
+
 /**
  * Select a note using weighted probability.
  * Weight = 1 - rollingAccuracy (weaker notes appear more often).
@@ -207,22 +275,23 @@ export function getNoteOverallAccuracy(state, note) {
 
 /**
  * Check if conditions are met to add a new note.
- * All active notes must be mastered on all active instruments.
+ * All active notes must be mastered on all eligible instruments.
  *
  * @param {Object} state - Current progress state
  * @returns {boolean} True if ready to add a new note
  */
 export function canAddNewNote(state) {
-  const { activeNotes, activeInstruments, noteProgress } = state
+  const { activeNotes, noteProgress } = state
 
   // Check if we've reached max active notes
   if (activeNotes.length >= MASTERY_THRESHOLDS.maxActiveNotes) {
     return false
   }
 
-  // Check if all current notes are mastered on all instruments
+  // Check if all current notes are mastered on all their eligible instruments
   for (const note of activeNotes) {
-    for (const instrument of activeInstruments) {
+    const eligibleInstruments = getEligibleInstruments(state, note)
+    for (const instrument of eligibleInstruments) {
       const progress = noteProgress[note]?.[instrument]
       if (!progress || !isNoteMastered(progress)) {
         return false
@@ -284,13 +353,14 @@ export function incrementSessions(state) {
 
 /**
  * Check if conditions are met for promotion (adding a new note).
- * Promotion happens when ALL active notes are mastered on all active instruments.
+ * Promotion happens when ALL active notes are mastered on ALL eligible instruments.
+ * A note's eligible instruments expand as it's mastered on each one (piano → violin → guitar).
  *
  * @param {Object} state - Current progress state
  * @returns {{ shouldPromote: boolean, nextNote: string | null }}
  */
 export function checkPromotion(state) {
-  const { activeNotes, activeInstruments, noteProgress } = state
+  const { activeNotes, noteProgress } = state
 
   // Check if we've reached max active notes
   if (activeNotes.length >= MASTERY_THRESHOLDS.maxActiveNotes) {
@@ -307,9 +377,10 @@ export function checkPromotion(state) {
     return { shouldPromote: false, nextNote: null }
   }
 
-  // Check if ALL current notes are mastered on ALL instruments
+  // Check if ALL current notes are mastered on ALL their eligible instruments
   for (const note of activeNotes) {
-    for (const instrument of activeInstruments) {
+    const eligibleInstruments = getEligibleInstruments(state, note)
+    for (const instrument of eligibleInstruments) {
       const progress = noteProgress[note]?.[instrument]
       if (!progress || !isNoteMastered(progress)) {
         return { shouldPromote: false, nextNote: null }
