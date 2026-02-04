@@ -21,6 +21,7 @@ import {
   applyAdaptiveDifficulty,
   checkPromotion,
   getWeightedNoteSelection,
+  selectQuizInstrument,
 } from '../engine/ProgressTracker'
 import {
   saveProgress,
@@ -72,6 +73,12 @@ export function useGamePhase() {
   const [circleStates, setCircleStates] = useState({})
   const [quizFeedback, setQuizFeedback] = useState(null)
 
+  // Instrument indicator state
+  const [currentInstrument, setCurrentInstrument] = useState('piano')
+  const [instrumentVisible, setInstrumentVisible] = useState(false)
+  const [showInstrumentCelebration, setShowInstrumentCelebration] = useState(false)
+  const instrumentTimerRef = useRef(null)
+
   // Refs for timers
   const listenTimerRef = useRef(null)
   const exploreTimerRef = useRef(null)
@@ -94,6 +101,26 @@ export function useGamePhase() {
       clearTimeout(playingTimerRef.current)
       playingTimerRef.current = null
     }
+    if (instrumentTimerRef.current) {
+      clearTimeout(instrumentTimerRef.current)
+      instrumentTimerRef.current = null
+    }
+  }, [])
+
+  // Show instrument indicator temporarily
+  const showInstrumentIndicator = useCallback((instrument, duration = 1200) => {
+    setCurrentInstrument(instrument)
+    setInstrumentVisible(true)
+
+    // Clear any existing timer
+    if (instrumentTimerRef.current) {
+      clearTimeout(instrumentTimerRef.current)
+    }
+
+    instrumentTimerRef.current = setTimeout(() => {
+      setInstrumentVisible(false)
+      instrumentTimerRef.current = null
+    }, duration)
   }, [])
 
   // Set a circle to playing state temporarily
@@ -130,6 +157,7 @@ export function useGamePhase() {
     if (currentNote) {
       audioEngine.playNote(currentNote, 'piano')
       playCircle(currentNote, LISTEN_NOTE_INTERVAL - 200)
+      showInstrumentIndicator('piano', LISTEN_NOTE_INTERVAL - 200)
     }
 
     // Set up interval to advance through notes
@@ -151,6 +179,7 @@ export function useGamePhase() {
         if (nextNote) {
           audioEngine.playNote(nextNote, 'piano')
           playCircle(nextNote, LISTEN_NOTE_INTERVAL - 200)
+          showInstrumentIndicator('piano', LISTEN_NOTE_INTERVAL - 200)
 
           // Update circle states
           setCircleStates((prev) => {
@@ -172,7 +201,7 @@ export function useGamePhase() {
         listenTimerRef.current = null
       }
     }
-  }, [phase, activeNotes, playCircle, gameState])
+  }, [phase, activeNotes, playCircle, showInstrumentIndicator, gameState])
 
   // ============ EXPLORE Phase Logic ============
 
@@ -226,18 +255,22 @@ export function useGamePhase() {
     if (justEnteredQuiz) {
       // Override the first question with weighted selection based on progress
       const weightedQuestion = getWeightedNoteSelection(progressState, 'piano')
+      // Select instrument for this question based on note's progression
+      const questionInstrument = selectQuizInstrument(progressState, weightedQuestion)
 
-      // Update game state with weighted question
+      // Update game state with weighted question and instrument
       setGameState((prev) => ({
         ...prev,
         quiz: {
           ...prev.quiz,
           currentQuestion: weightedQuestion,
+          currentInstrument: questionInstrument,
         },
       }))
 
-      // Play the weighted question note
-      audioEngine.playNote(weightedQuestion, 'piano')
+      // Play the weighted question note on the selected instrument
+      audioEngine.playNote(weightedQuestion, questionInstrument)
+      showInstrumentIndicator(questionInstrument, 1500)
 
       // All circles idle during quiz
       const quizStates = {}
@@ -247,7 +280,7 @@ export function useGamePhase() {
       setCircleStates(quizStates)
       setQuizFeedback(null)
     }
-  }, [phase, quizRound, activeNotes, progressState])
+  }, [phase, quizRound, activeNotes, progressState, showInstrumentIndicator])
 
   // ============ RESULT Phase Logic ============
 
@@ -323,6 +356,7 @@ export function useGamePhase() {
         // Play the note
         audioEngine.playNote(note, 'piano')
         playCircle(note)
+        showInstrumentIndicator('piano', 400)
 
         // Record tap
         setGameState((prevState) => {
@@ -345,8 +379,11 @@ export function useGamePhase() {
       }
 
       if (phase === PHASES.QUIZ) {
-        // Play the tapped note
-        audioEngine.playNote(note, 'piano')
+        // Get the current instrument from game state
+        const quizInstrument = gameState.quiz?.currentInstrument || 'piano'
+
+        // Play the tapped note on the same instrument as the question
+        audioEngine.playNote(note, quizInstrument)
 
         setGameState((prevState) => {
           const { state: newState, correct, correctNote, status } = answerQuiz(
@@ -354,13 +391,13 @@ export function useGamePhase() {
             note
           )
 
-          // Record answer to progress tracker
+          // Record answer to progress tracker with the actual instrument used
           setProgressState((prevProgress) =>
-            recordAnswer(prevProgress, correctNote, 'piano', correct)
+            recordAnswer(prevProgress, correctNote, quizInstrument, correct)
           )
 
           // Show feedback
-          setQuizFeedback({ correct, correctNote, answer: note })
+          setQuizFeedback({ correct, correctNote, answer: note, instrument: quizInstrument })
 
           // Determine feedback duration based on correct/incorrect
           const feedbackDuration = correct
@@ -371,6 +408,9 @@ export function useGamePhase() {
             // Correct answer: show 'correct' state, play reward sound
             setCircleStates((prev) => ({ ...prev, [note]: 'correct' }))
             audioEngine.playReward()
+            // Show instrument celebration briefly
+            setShowInstrumentCelebration(true)
+            setTimeout(() => setShowInstrumentCelebration(false), feedbackDuration)
           } else {
             // Incorrect answer: dim tapped circle, highlight correct and replay
             // Silence is the "wrong" feedback - no negative sound
@@ -380,7 +420,8 @@ export function useGamePhase() {
               [correctNote]: 'playing',
             }))
             // Replay the correct note so child hears what it should have been
-            audioEngine.playNote(correctNote, 'piano')
+            audioEngine.playNote(correctNote, quizInstrument)
+            showInstrumentIndicator(quizInstrument, INCORRECT_FEEDBACK_DURATION)
           }
 
           // After feedback duration, reset and prepare for next question
@@ -401,18 +442,22 @@ export function useGamePhase() {
                 // Use weighted selection for next question based on current progress
                 setProgressState((currentProgress) => {
                   const weightedNextQuestion = getWeightedNoteSelection(currentProgress, 'piano')
+                  // Select instrument for the next question
+                  const nextInstrument = selectQuizInstrument(currentProgress, weightedNextQuestion)
 
-                  // Update game state with weighted next question
+                  // Update game state with weighted next question and instrument
                   setGameState((prev) => ({
                     ...prev,
                     quiz: {
                       ...prev.quiz,
                       currentQuestion: weightedNextQuestion,
+                      currentInstrument: nextInstrument,
                     },
                   }))
 
-                  // Play the weighted next question note
-                  audioEngine.playNote(weightedNextQuestion, 'piano')
+                  // Play the weighted next question note on selected instrument
+                  audioEngine.playNote(weightedNextQuestion, nextInstrument)
+                  showInstrumentIndicator(nextInstrument, 1500)
 
                   return currentProgress // Don't modify progress state
                 })
@@ -428,9 +473,10 @@ export function useGamePhase() {
         // Allow free play in result phase too
         audioEngine.playNote(note, 'piano')
         playCircle(note)
+        showInstrumentIndicator('piano', 400)
       }
     },
-    [phase, activeNotes, playCircle]
+    [phase, activeNotes, playCircle, showInstrumentIndicator, gameState]
   )
 
   // ============ Restart Handler ============
@@ -441,6 +487,9 @@ export function useGamePhase() {
     setPromotionMessage(null)
     setNotesEntering([])
     setNotesExiting([])
+    setInstrumentVisible(false)
+    setShowInstrumentCelebration(false)
+    setCurrentInstrument('piano')
     const initial = createInitialState()
     // Use current activeNotes from progressState
     setGameState(startListenPhase(initial, progressState.activeNotes))
@@ -474,5 +523,9 @@ export function useGamePhase() {
     notesEntering,
     notesExiting,
     progressState, // Expose for debugging/display
+    // Instrument indicator
+    currentInstrument,
+    instrumentVisible,
+    showInstrumentCelebration,
   }
 }

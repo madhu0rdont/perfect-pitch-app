@@ -1,5 +1,6 @@
 import { useGamePhase } from '../hooks/useGamePhase'
 import NoteCircle from './NoteCircle'
+import InstrumentIndicator from './InstrumentIndicator'
 import { NOTE_CONFIGS, getCircleAngle } from '../constants/notes'
 import { PHASES } from '../engine/PhaseManager'
 import './GameScreen.css'
@@ -43,6 +44,9 @@ function GameScreen() {
     promotionMessage,
     notesEntering,
     notesExiting,
+    currentInstrument,
+    instrumentVisible,
+    showInstrumentCelebration,
   } = useGamePhase()
 
   const circleSize = getCircleSize(activeNotes.length)
@@ -63,6 +67,14 @@ function GameScreen() {
       </div>
 
       <div className="game-screen__circle-container">
+        <div className="game-screen__instrument-area">
+          <InstrumentIndicator
+            instrument={currentInstrument}
+            visible={instrumentVisible}
+            isQuizPhase={phase === PHASES.QUIZ}
+            showCelebration={showInstrumentCelebration}
+          />
+        </div>
         <div
           className="game-screen__circle-of-fifths"
           style={{

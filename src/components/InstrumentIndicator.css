@@ -1,0 +1,84 @@
+.instrument-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+  pointer-events: none;
+}
+
+.instrument-indicator--visible {
+  opacity: 1;
+}
+
+.instrument-indicator__emoji {
+  font-size: 40px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+}
+
+.instrument-indicator__hint {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Quiz phase - larger and more prominent */
+.instrument-indicator--quiz {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 16px;
+  padding: 12px 20px;
+}
+
+.instrument-indicator--quiz .instrument-indicator__emoji {
+  font-size: 48px;
+}
+
+.instrument-indicator--quiz.instrument-indicator--visible {
+  animation: indicator-pulse 0.4s ease-out;
+}
+
+@keyframes indicator-pulse {
+  0% {
+    transform: scale(0.8);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Celebration mode - shows briefly with correct answer */
+.instrument-indicator--celebration {
+  position: absolute;
+  animation: celebration-pop 0.6s ease-out forwards;
+}
+
+.instrument-indicator--celebration .instrument-indicator__emoji {
+  font-size: 32px;
+}
+
+@keyframes celebration-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) translateY(10px);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.2) translateY(-5px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Fade out animation for when visibility turns off */
+.instrument-indicator:not(.instrument-indicator--visible) {
+  transition: opacity 0.2s ease-out;
+}
