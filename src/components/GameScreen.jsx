@@ -47,6 +47,7 @@ function GameScreen() {
     currentInstrument,
     instrumentVisible,
     showInstrumentCelebration,
+    newSoundMessage,
   } = useGamePhase()
 
   const circleSize = getCircleSize(activeNotes.length)
@@ -74,6 +75,11 @@ function GameScreen() {
             isQuizPhase={phase === PHASES.QUIZ}
             showCelebration={showInstrumentCelebration}
           />
+          {newSoundMessage && (
+            <div className="game-screen__new-sound-message">
+              {newSoundMessage}
+            </div>
+          )}
         </div>
         <div
           className="game-screen__circle-of-fifths"

@@ -9,7 +9,7 @@ import './NoteCircle.css'
  * @param {Object} props
  * @param {string} props.note - The note name (e.g. 'C4')
  * @param {Function} props.onTap - Callback when tapped
- * @param {'idle'|'playing'|'correct'|'incorrect'|'dimmed'|'hidden'} props.state - Visual state
+ * @param {'idle'|'playing'|'correct'|'incorrect'|'dimmed'|'hidden'|'hint'} props.state - Visual state
  * @param {boolean} props.disabled - Whether the circle is tappable
  */
 function NoteCircle({ note, onTap, state = 'idle', disabled = false }) {

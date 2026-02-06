@@ -22,6 +22,9 @@ import {
   checkPromotion,
   getWeightedNoteSelection,
   selectQuizInstrument,
+  getNewlyEligibleInstruments,
+  isComboIntroduced,
+  markComboIntroduced,
 } from '../engine/ProgressTracker'
 import {
   saveProgress,
@@ -41,6 +44,11 @@ const QUESTION_PAUSE = 1000 // ms pause before next question
 
 // Duration to show promotion message
 const PROMOTION_MESSAGE_DURATION = 2500 // ms to show "New note!" message
+
+// New instrument unlock timing
+const NEW_SOUND_MESSAGE_DURATION = 2000 // ms to show "New sound!" message
+const BONUS_NOTE_DELAY = 500 // ms delay before playing bonus note
+const FIRST_TIME_HINT_DELAY = 1200 // ms delay before showing hint pulse
 
 /**
  * Custom hook that wraps PhaseManager and connects it to GameScreen.
@@ -78,6 +86,12 @@ export function useGamePhase() {
   const [instrumentVisible, setInstrumentVisible] = useState(false)
   const [showInstrumentCelebration, setShowInstrumentCelebration] = useState(false)
   const instrumentTimerRef = useRef(null)
+
+  // Newly eligible instrument tracking
+  const [newlyEligibleCombos, setNewlyEligibleCombos] = useState([])
+  const [newSoundMessage, setNewSoundMessage] = useState(null)
+  const [showFirstTimeHint, setShowFirstTimeHint] = useState(false)
+  const [hintNote, setHintNote] = useState(null)
 
   // Refs for timers
   const listenTimerRef = useRef(null)
@@ -168,9 +182,49 @@ export function useGamePhase() {
         const { state: newState, status } = advanceListenNote(prevState)
 
         if (status === 'complete') {
-          // Transition to EXPLORE
+          // Clear interval before handling completion
           clearInterval(listenTimerRef.current)
           listenTimerRef.current = null
+
+          // Check if we have newly eligible combos to play as bonus
+          if (newlyEligibleCombos.length > 0) {
+            // Play bonus notes for newly eligible instruments
+            const combo = newlyEligibleCombos[0]
+
+            // Show "New sound!" message
+            setNewSoundMessage('New sound!')
+            setShowInstrumentCelebration(true)
+
+            // Play the bonus note after a short delay
+            setTimeout(() => {
+              audioEngine.playNote(combo.note, combo.instrument)
+              playCircle(combo.note, NEW_SOUND_MESSAGE_DURATION - BONUS_NOTE_DELAY)
+              showInstrumentIndicator(combo.instrument, NEW_SOUND_MESSAGE_DURATION - BONUS_NOTE_DELAY)
+
+              // Update circle states to highlight the note
+              setCircleStates((prev) => {
+                const updated = { ...prev }
+                activeNotes.forEach((note) => {
+                  updated[note] = note === combo.note ? 'playing' : 'dimmed'
+                })
+                return updated
+              })
+            }, BONUS_NOTE_DELAY)
+
+            // Clear message and celebration after duration
+            setTimeout(() => {
+              setNewSoundMessage(null)
+              setShowInstrumentCelebration(false)
+              setNewlyEligibleCombos((prev) => prev.slice(1))
+
+              // Transition to EXPLORE after bonus
+              setGameState((prev) => startExplorePhase(prev))
+            }, NEW_SOUND_MESSAGE_DURATION)
+
+            return newState // Don't transition yet
+          }
+
+          // No bonus notes, transition to EXPLORE immediately
           return startExplorePhase(newState)
         }
 
@@ -258,6 +312,9 @@ export function useGamePhase() {
       // Select instrument for this question based on note's progression
       const questionInstrument = selectQuizInstrument(progressState, weightedQuestion)
 
+      // Check if this is a first-time combo (needs hint)
+      const needsHint = !isComboIntroduced(progressState, weightedQuestion, questionInstrument)
+
       // Update game state with weighted question and instrument
       setGameState((prev) => ({
         ...prev,
@@ -279,6 +336,25 @@ export function useGamePhase() {
       })
       setCircleStates(quizStates)
       setQuizFeedback(null)
+
+      // Show first-time hint if needed (pulse the correct circle after delay)
+      if (needsHint) {
+        setHintNote(weightedQuestion)
+        setTimeout(() => {
+          setShowFirstTimeHint(true)
+          setCircleStates((prev) => ({ ...prev, [weightedQuestion]: 'hint' }))
+
+          // Clear hint after a moment
+          setTimeout(() => {
+            setShowFirstTimeHint(false)
+            setHintNote(null)
+            setCircleStates((prev) => ({ ...prev, [weightedQuestion]: 'idle' }))
+          }, 800)
+        }, FIRST_TIME_HINT_DELAY)
+
+        // Mark combo as introduced
+        setProgressState((prev) => markComboIntroduced(prev, weightedQuestion, questionInstrument))
+      }
     }
   }, [phase, quizRound, activeNotes, progressState, showInstrumentIndicator])
 
@@ -335,6 +411,12 @@ export function useGamePhase() {
               setNotesExiting([])
             }, 500)
           }
+        }
+
+        // Detect newly eligible instruments for next session's bonus playback
+        const newlyEligible = getNewlyEligibleInstruments(prevProgress, newProgress)
+        if (newlyEligible.length > 0) {
+          setNewlyEligibleCombos(newlyEligible)
         }
 
         // Save to storage
@@ -445,6 +527,9 @@ export function useGamePhase() {
                   // Select instrument for the next question
                   const nextInstrument = selectQuizInstrument(currentProgress, weightedNextQuestion)
 
+                  // Check if this is a first-time combo (needs hint)
+                  const needsHint = !isComboIntroduced(currentProgress, weightedNextQuestion, nextInstrument)
+
                   // Update game state with weighted next question and instrument
                   setGameState((prev) => ({
                     ...prev,
@@ -458,6 +543,25 @@ export function useGamePhase() {
                   // Play the weighted next question note on selected instrument
                   audioEngine.playNote(weightedNextQuestion, nextInstrument)
                   showInstrumentIndicator(nextInstrument, 1500)
+
+                  // Show first-time hint if needed
+                  if (needsHint) {
+                    setHintNote(weightedNextQuestion)
+                    setTimeout(() => {
+                      setShowFirstTimeHint(true)
+                      setCircleStates((prev) => ({ ...prev, [weightedNextQuestion]: 'hint' }))
+
+                      // Clear hint after a moment
+                      setTimeout(() => {
+                        setShowFirstTimeHint(false)
+                        setHintNote(null)
+                        setCircleStates((prev) => ({ ...prev, [weightedNextQuestion]: 'idle' }))
+                      }, 800)
+                    }, FIRST_TIME_HINT_DELAY)
+
+                    // Mark combo as introduced
+                    return markComboIntroduced(currentProgress, weightedNextQuestion, nextInstrument)
+                  }
 
                   return currentProgress // Don't modify progress state
                 })
@@ -490,6 +594,10 @@ export function useGamePhase() {
     setInstrumentVisible(false)
     setShowInstrumentCelebration(false)
     setCurrentInstrument('piano')
+    setNewSoundMessage(null)
+    setShowFirstTimeHint(false)
+    setHintNote(null)
+    // Keep newlyEligibleCombos - they should persist to next session
     const initial = createInitialState()
     // Use current activeNotes from progressState
     setGameState(startListenPhase(initial, progressState.activeNotes))
@@ -527,5 +635,9 @@ export function useGamePhase() {
     currentInstrument,
     instrumentVisible,
     showInstrumentCelebration,
+    // New sound unlock
+    newSoundMessage,
+    showFirstTimeHint,
+    hintNote,
   }
 }

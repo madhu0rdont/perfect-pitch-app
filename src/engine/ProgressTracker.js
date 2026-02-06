@@ -42,12 +42,16 @@ export function createInitialState() {
     }
   }
 
+  // Initialize introducedCombos with piano for initial notes
+  const introducedCombos = initialNotes.map((note) => `${note}:piano`)
+
   return {
     noteProgress,
     activeNotes: initialNotes,
     activeInstruments: initialInstruments,
     currentStage: 1,
     sessionsPlayed: 0,
+    introducedCombos, // Track which note+instrument combos have been introduced
   }
 }
 
@@ -198,6 +202,73 @@ export function selectQuizInstrument(state, note) {
   // Randomly select from mastered instruments
   const randomIndex = Math.floor(Math.random() * masteredInstruments.length)
   return masteredInstruments[randomIndex]
+}
+
+/**
+ * Compare two states and find newly eligible instruments.
+ * Returns note+instrument pairs where a note became eligible on a new instrument.
+ *
+ * @param {Object} prevState - Previous progress state
+ * @param {Object} currentState - Current progress state
+ * @returns {Array<{note: string, instrument: string}>} Newly eligible pairs
+ */
+export function getNewlyEligibleInstruments(prevState, currentState) {
+  const newlyEligible = []
+
+  // Check all active notes in current state
+  for (const note of currentState.activeNotes) {
+    const prevEligible = prevState.activeNotes.includes(note)
+      ? getEligibleInstruments(prevState, note)
+      : ['piano'] // New notes start with piano only
+
+    const currentEligible = getEligibleInstruments(currentState, note)
+
+    // Find instruments that are now eligible but weren't before
+    for (const instrument of currentEligible) {
+      if (!prevEligible.includes(instrument)) {
+        newlyEligible.push({ note, instrument })
+      }
+    }
+  }
+
+  return newlyEligible
+}
+
+/**
+ * Check if a note+instrument combo has been introduced (first quiz shown).
+ *
+ * @param {Object} state - Progress state
+ * @param {string} note - Note name
+ * @param {string} instrument - Instrument name
+ * @returns {boolean} True if this combo has been introduced
+ */
+export function isComboIntroduced(state, note, instrument) {
+  const combo = `${note}:${instrument}`
+  return (state.introducedCombos || []).includes(combo)
+}
+
+/**
+ * Mark a note+instrument combo as introduced.
+ * Returns new state with the combo added to introducedCombos.
+ *
+ * @param {Object} state - Progress state
+ * @param {string} note - Note name
+ * @param {string} instrument - Instrument name
+ * @returns {Object} New state with combo marked as introduced
+ */
+export function markComboIntroduced(state, note, instrument) {
+  const combo = `${note}:${instrument}`
+  const currentCombos = state.introducedCombos || []
+
+  // Already introduced, return unchanged
+  if (currentCombos.includes(combo)) {
+    return state
+  }
+
+  return {
+    ...state,
+    introducedCombos: [...currentCombos, combo],
+  }
 }
 
 /**

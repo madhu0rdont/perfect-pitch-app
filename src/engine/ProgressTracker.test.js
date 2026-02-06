@@ -6,6 +6,9 @@ import {
   isNoteMastered,
   getEligibleInstruments,
   selectQuizInstrument,
+  getNewlyEligibleInstruments,
+  isComboIntroduced,
+  markComboIntroduced,
   getWeightedNoteSelection,
   getNoteOverallAccuracy,
   canAddNewNote,
@@ -57,6 +60,12 @@ describe('ProgressTracker', () => {
 
       expect(state.currentStage).toBe(1)
       expect(state.sessionsPlayed).toBe(0)
+    })
+
+    it('initializes introducedCombos with piano for initial notes', () => {
+      const state = createInitialState()
+
+      expect(state.introducedCombos).toEqual(['C4:piano', 'G4:piano'])
     })
   })
 
@@ -561,6 +570,186 @@ describe('ProgressTracker', () => {
       // Promotion should be blocked
       const result = checkPromotion(state)
       expect(result.shouldPromote).toBe(false)
+    })
+  })
+
+  // ============ Instrument Unlock Detection Tests ============
+
+  describe('getNewlyEligibleInstruments()', () => {
+    it('returns empty array when no new instruments are eligible', () => {
+      const state = createInitialState()
+
+      // No change in eligibility
+      const newlyEligible = getNewlyEligibleInstruments(state, state)
+
+      expect(newlyEligible).toEqual([])
+    })
+
+    it('detects when a note becomes eligible for violin', () => {
+      let prevState = createInitialState()
+
+      // Master C4 on piano
+      let currentState = prevState
+      for (let i = 0; i < 10; i++) {
+        currentState = recordAnswer(currentState, 'C4', 'piano', true)
+      }
+
+      const newlyEligible = getNewlyEligibleInstruments(prevState, currentState)
+
+      expect(newlyEligible).toEqual([{ note: 'C4', instrument: 'violin' }])
+    })
+
+    it('detects when multiple notes become eligible', () => {
+      let prevState = createInitialState()
+
+      // Master both C4 and G4 on piano
+      let currentState = prevState
+      for (let i = 0; i < 10; i++) {
+        currentState = recordAnswer(currentState, 'C4', 'piano', true)
+        currentState = recordAnswer(currentState, 'G4', 'piano', true)
+      }
+
+      const newlyEligible = getNewlyEligibleInstruments(prevState, currentState)
+
+      expect(newlyEligible).toHaveLength(2)
+      expect(newlyEligible).toContainEqual({ note: 'C4', instrument: 'violin' })
+      expect(newlyEligible).toContainEqual({ note: 'G4', instrument: 'violin' })
+    })
+
+    it('detects when a note becomes eligible for guitar', () => {
+      // Start with C4 already mastered on piano
+      let prevState = createInitialState()
+      for (let i = 0; i < 10; i++) {
+        prevState = recordAnswer(prevState, 'C4', 'piano', true)
+      }
+
+      // Now master on violin
+      let currentState = prevState
+      for (let i = 0; i < 10; i++) {
+        currentState = recordAnswer(currentState, 'C4', 'violin', true)
+      }
+
+      const newlyEligible = getNewlyEligibleInstruments(prevState, currentState)
+
+      expect(newlyEligible).toEqual([{ note: 'C4', instrument: 'guitar-acoustic' }])
+    })
+
+    it('does not report instruments that were already eligible', () => {
+      // Start with C4 already mastered on piano (violin already eligible)
+      let prevState = createInitialState()
+      for (let i = 0; i < 10; i++) {
+        prevState = recordAnswer(prevState, 'C4', 'piano', true)
+      }
+
+      // Just add more answers but don't master violin
+      let currentState = prevState
+      currentState = recordAnswer(currentState, 'C4', 'violin', true)
+      currentState = recordAnswer(currentState, 'C4', 'violin', true)
+
+      const newlyEligible = getNewlyEligibleInstruments(prevState, currentState)
+
+      // Violin was already eligible, so nothing new
+      expect(newlyEligible).toEqual([])
+    })
+  })
+
+  describe('isComboIntroduced()', () => {
+    it('returns true for combos in introducedCombos', () => {
+      const state = createInitialState()
+
+      expect(isComboIntroduced(state, 'C4', 'piano')).toBe(true)
+      expect(isComboIntroduced(state, 'G4', 'piano')).toBe(true)
+    })
+
+    it('returns false for combos not in introducedCombos', () => {
+      const state = createInitialState()
+
+      expect(isComboIntroduced(state, 'C4', 'violin')).toBe(false)
+      expect(isComboIntroduced(state, 'D4', 'piano')).toBe(false)
+    })
+
+    it('handles missing introducedCombos gracefully', () => {
+      const state = { ...createInitialState() }
+      delete state.introducedCombos
+
+      expect(isComboIntroduced(state, 'C4', 'piano')).toBe(false)
+    })
+  })
+
+  describe('markComboIntroduced()', () => {
+    it('adds new combo to introducedCombos', () => {
+      let state = createInitialState()
+
+      state = markComboIntroduced(state, 'C4', 'violin')
+
+      expect(state.introducedCombos).toContain('C4:violin')
+      expect(isComboIntroduced(state, 'C4', 'violin')).toBe(true)
+    })
+
+    it('does not duplicate already-introduced combos', () => {
+      let state = createInitialState()
+      const originalLength = state.introducedCombos.length
+
+      // Try to add C4:piano again (already there)
+      state = markComboIntroduced(state, 'C4', 'piano')
+
+      expect(state.introducedCombos).toHaveLength(originalLength)
+    })
+
+    it('preserves other state properties', () => {
+      let state = createInitialState()
+      state = recordAnswer(state, 'C4', 'piano', true)
+
+      state = markComboIntroduced(state, 'C4', 'violin')
+
+      expect(state.noteProgress.C4.piano.attempts).toBe(1)
+      expect(state.activeNotes).toEqual(['C4', 'G4'])
+    })
+
+    it('handles missing introducedCombos gracefully', () => {
+      let state = { ...createInitialState() }
+      delete state.introducedCombos
+
+      state = markComboIntroduced(state, 'C4', 'violin')
+
+      expect(state.introducedCombos).toEqual(['C4:violin'])
+    })
+  })
+
+  describe('first-time hint behavior', () => {
+    it('initial state has piano combos introduced', () => {
+      const state = createInitialState()
+
+      // First quiz on piano should NOT show hint (already introduced)
+      expect(isComboIntroduced(state, 'C4', 'piano')).toBe(true)
+      expect(isComboIntroduced(state, 'G4', 'piano')).toBe(true)
+    })
+
+    it('new instrument requires introduction', () => {
+      let state = createInitialState()
+
+      // Master C4 on piano to unlock violin
+      for (let i = 0; i < 10; i++) {
+        state = recordAnswer(state, 'C4', 'piano', true)
+      }
+
+      // Violin is eligible but not introduced
+      expect(getEligibleInstruments(state, 'C4')).toContain('violin')
+      expect(isComboIntroduced(state, 'C4', 'violin')).toBe(false)
+
+      // After marking introduced
+      state = markComboIntroduced(state, 'C4', 'violin')
+      expect(isComboIntroduced(state, 'C4', 'violin')).toBe(true)
+    })
+
+    it('second quiz on same combo does not need hint', () => {
+      let state = createInitialState()
+
+      // Mark violin as introduced
+      state = markComboIntroduced(state, 'C4', 'violin')
+
+      // Now it's introduced, so no hint needed
+      expect(isComboIntroduced(state, 'C4', 'violin')).toBe(true)
     })
   })
 
