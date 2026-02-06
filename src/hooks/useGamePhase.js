@@ -22,6 +22,7 @@ import {
   checkPromotion,
   getWeightedNoteSelection,
   selectQuizInstrument,
+  getEligibleInstruments,
   getNewlyEligibleInstruments,
   isComboIntroduced,
   markComboIntroduced,
@@ -93,6 +94,9 @@ export function useGamePhase() {
   const [showFirstTimeHint, setShowFirstTimeHint] = useState(false)
   const [hintNote, setHintNote] = useState(null)
 
+  // Explore phase instrument cycling - tracks which instrument index to use per note
+  const exploreInstrumentIndexRef = useRef({})
+
   // Refs for timers
   const listenTimerRef = useRef(null)
   const exploreTimerRef = useRef(null)
@@ -154,8 +158,17 @@ export function useGamePhase() {
 
   // ============ LISTEN Phase Logic ============
 
+  // Track notes that have additional instruments (for contrast playback at end)
+  const contrastNotesRef = useRef([])
+
   useEffect(() => {
     if (phase !== PHASES.LISTEN) return
+
+    // Find notes with multiple eligible instruments for contrast playback
+    contrastNotesRef.current = activeNotes.filter((note) => {
+      const eligible = getEligibleInstruments(progressState, note)
+      return eligible.length > 1
+    })
 
     // Dim all circles except the current one during listen
     const currentNote = getCurrentListenNote(gameState)
@@ -186,7 +199,7 @@ export function useGamePhase() {
           clearInterval(listenTimerRef.current)
           listenTimerRef.current = null
 
-          // Check if we have newly eligible combos to play as bonus
+          // First check for newly eligible combos (new unlocks this session)
           if (newlyEligibleCombos.length > 0) {
             // Play bonus notes for newly eligible instruments
             const combo = newlyEligibleCombos[0]
@@ -224,7 +237,44 @@ export function useGamePhase() {
             return newState // Don't transition yet
           }
 
-          // No bonus notes, transition to EXPLORE immediately
+          // Play contrast notes (notes with multiple instruments) on their newest instrument
+          if (contrastNotesRef.current.length > 0) {
+            let contrastIndex = 0
+            const playNextContrast = () => {
+              if (contrastIndex >= contrastNotesRef.current.length) {
+                // All contrast notes played, transition to EXPLORE
+                setGameState((prev) => startExplorePhase(prev))
+                return
+              }
+
+              const contrastNote = contrastNotesRef.current[contrastIndex]
+              const eligibleInstruments = getEligibleInstruments(progressState, contrastNote)
+              const newestInstrument = eligibleInstruments[eligibleInstruments.length - 1]
+
+              // Play on newest instrument
+              audioEngine.playNote(contrastNote, newestInstrument)
+              playCircle(contrastNote, LISTEN_NOTE_INTERVAL - 200)
+              showInstrumentIndicator(newestInstrument, LISTEN_NOTE_INTERVAL - 200)
+
+              // Update circle states
+              setCircleStates((prev) => {
+                const updated = { ...prev }
+                activeNotes.forEach((note) => {
+                  updated[note] = note === contrastNote ? 'playing' : 'dimmed'
+                })
+                return updated
+              })
+
+              contrastIndex++
+              setTimeout(playNextContrast, LISTEN_NOTE_INTERVAL)
+            }
+
+            // Start playing contrast notes
+            playNextContrast()
+            return newState // Don't transition yet
+          }
+
+          // No bonus or contrast notes, transition to EXPLORE immediately
           return startExplorePhase(newState)
         }
 
@@ -255,12 +305,15 @@ export function useGamePhase() {
         listenTimerRef.current = null
       }
     }
-  }, [phase, activeNotes, playCircle, showInstrumentIndicator, gameState])
+  }, [phase, activeNotes, playCircle, showInstrumentIndicator, gameState, progressState])
 
   // ============ EXPLORE Phase Logic ============
 
   useEffect(() => {
     if (phase !== PHASES.EXPLORE) return
+
+    // Reset instrument cycling for all notes when entering explore
+    exploreInstrumentIndexRef.current = {}
 
     // All circles are idle during explore
     const exploreStates = {}
@@ -435,10 +488,22 @@ export function useGamePhase() {
       if (phase === PHASES.LISTEN) return
 
       if (phase === PHASES.EXPLORE) {
-        // Play the note
-        audioEngine.playNote(note, 'piano')
+        // Get eligible instruments for this note
+        const eligibleInstruments = getEligibleInstruments(progressState, note)
+
+        // Get current instrument index for this note (default to 0)
+        const currentIndex = exploreInstrumentIndexRef.current[note] || 0
+
+        // Select the instrument at current index
+        const instrument = eligibleInstruments[currentIndex % eligibleInstruments.length]
+
+        // Cycle to next instrument for next tap
+        exploreInstrumentIndexRef.current[note] = (currentIndex + 1) % eligibleInstruments.length
+
+        // Play the note on the selected instrument
+        audioEngine.playNote(note, instrument)
         playCircle(note)
-        showInstrumentIndicator('piano', 400)
+        showInstrumentIndicator(instrument, 400)
 
         // Record tap
         setGameState((prevState) => {
@@ -574,13 +639,18 @@ export function useGamePhase() {
       }
 
       if (phase === PHASES.RESULT) {
-        // Allow free play in result phase too
-        audioEngine.playNote(note, 'piano')
+        // Allow free play in result phase with instrument cycling
+        const eligibleInstruments = getEligibleInstruments(progressState, note)
+        const currentIndex = exploreInstrumentIndexRef.current[note] || 0
+        const instrument = eligibleInstruments[currentIndex % eligibleInstruments.length]
+        exploreInstrumentIndexRef.current[note] = (currentIndex + 1) % eligibleInstruments.length
+
+        audioEngine.playNote(note, instrument)
         playCircle(note)
-        showInstrumentIndicator('piano', 400)
+        showInstrumentIndicator(instrument, 400)
       }
     },
-    [phase, activeNotes, playCircle, showInstrumentIndicator, gameState]
+    [phase, activeNotes, playCircle, showInstrumentIndicator, gameState, progressState]
   )
 
   // ============ Restart Handler ============
